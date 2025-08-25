@@ -1,0 +1,379 @@
+---
+# Example: Multi-team application deployment with Vault namespace integration
+# This example shows how Team Alpha deploys an application in their dev environment
+# using their dedicated Vault namespace for secret management.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-alpha-dev
+  labels:
+    vault-namespace: team-alpha
+    environment: dev
+    team: team-alpha
+    managed-by: vault-team-onboarding
+
+---
+# ServiceAccount for the application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+
+---
+# VaultConnection for Team Alpha's Vault namespace
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: team-alpha-vault
+  namespace: team-alpha-dev
+  labels:
+    team: team-alpha
+    environment: dev
+spec:
+  address: "https://your-vault-cluster.vault.hashicorp.cloud:8200"
+  vaultNamespace: "team-alpha"
+  skipTLSVerify: false
+
+---
+# VaultAuth for Kubernetes authentication to Team Alpha's namespace
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: team-alpha-dev-auth
+  namespace: team-alpha-dev
+  labels:
+    team: team-alpha
+    environment: dev
+spec:
+  vaultConnectionRef: team-alpha-vault
+  method: kubernetes
+  mount: team-alpha-k8s
+  kubernetes:
+    role: dev
+    serviceAccount: webapp
+
+---
+# VaultStaticSecret for application configuration
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: webapp-config
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+spec:
+  type: kv-v2
+  mount: secrets
+  path: dev/webapp/config
+  destination:
+    name: webapp-config
+    create: true
+  vaultAuthRef: team-alpha-dev-auth
+  refreshAfter: 30s
+
+---
+# VaultStaticSecret for database configuration
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: webapp-database
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+spec:
+  type: kv-v2
+  mount: secrets
+  path: dev/webapp/database
+  destination:
+    name: webapp-database
+    create: true
+  vaultAuthRef: team-alpha-dev-auth
+  refreshAfter: 30s
+
+---
+# VaultDynamicSecret for database credentials (if database engine is enabled)
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultDynamicSecret
+metadata:
+  name: webapp-db-creds
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+spec:
+  mount: database
+  path: creds/dev-readonly
+  destination:
+    name: webapp-db-creds
+    create: true
+  vaultAuthRef: team-alpha-dev-auth
+  renewalPercent: 67
+  revoke: true
+
+---
+# ConfigMap for non-sensitive configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-env-config
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+data:
+  ENVIRONMENT: "dev"
+  LOG_LEVEL: "debug"
+  METRICS_ENABLED: "true"
+  VAULT_NAMESPACE: "team-alpha"
+  TEAM_NAME: "team-alpha"
+
+---
+# Deployment for the web application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+      team: team-alpha
+      environment: dev
+  template:
+    metadata:
+      labels:
+        app: webapp
+        team: team-alpha
+        environment: dev
+      annotations:
+        # Vault Agent Injector annotations (alternative approach)
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/namespace: "team-alpha"
+        vault.hashicorp.com/role: "dev"
+        vault.hashicorp.com/auth-path: "auth/team-alpha-k8s"
+        vault.hashicorp.com/agent-inject-secret-api-keys: "secrets/dev/webapp/external-apis"
+        vault.hashicorp.com/agent-inject-template-api-keys: |
+          {{- with secret "secrets/dev/webapp/external-apis" -}}
+          export STRIPE_API_KEY="{{ .Data.data.stripe_api_key }}"
+          export SENDGRID_API_KEY="{{ .Data.data.sendgrid_api_key }}"
+          export EXTERNAL_API_TOKEN="{{ .Data.data.external_api_token }}"
+          {{- end }}
+    spec:
+      serviceAccountName: webapp
+      containers:
+      - name: webapp
+        image: nginx:alpine  # Replace with your application image
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Environment variables from ConfigMap
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: webapp-env-config
+              key: ENVIRONMENT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: webapp-env-config
+              key: LOG_LEVEL
+        - name: TEAM_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: webapp-env-config
+              key: TEAM_NAME
+        
+        # Application configuration from Vault
+        - name: APP_NAME
+          valueFrom:
+            secretKeyRef:
+              name: webapp-config
+              key: app_name
+        - name: APP_VERSION
+          valueFrom:
+            secretKeyRef:
+              name: webapp-config
+              key: version
+        - name: DEBUG_MODE
+          valueFrom:
+            secretKeyRef:
+              name: webapp-config
+              key: debug_mode
+        
+        # Database configuration from Vault
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: webapp-database
+              key: host
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: webapp-database
+              key: port
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: webapp-database
+              key: database
+        
+        # Dynamic database credentials from Vault
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: webapp-db-creds
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: webapp-db-creds
+              key: password
+        
+        volumeMounts:
+        # Mount Vault Agent injected secrets
+        - name: vault-secrets
+          mountPath: /vault/secrets
+          readOnly: true
+        
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          # Source Vault Agent injected secrets
+          if [ -f /vault/secrets/api-keys ]; then
+            source /vault/secrets/api-keys
+          fi
+          
+          # Start the application
+          echo "Starting webapp for Team Alpha in dev environment"
+          echo "Vault namespace: team-alpha"
+          echo "Environment: $ENVIRONMENT"
+          echo "Team: $TEAM_NAME"
+          echo "Database: $DB_HOST:$DB_PORT/$DB_NAME"
+          echo "Database user: $DB_USERNAME"
+          
+          # Replace with your application startup command
+          exec nginx -g "daemon off;"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      
+      volumes:
+      - name: vault-secrets
+        emptyDir: {}
+
+---
+# Service to expose the application
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+  namespace: team-alpha-dev
+  labels:
+    app: webapp
+    team: team-alpha
+    environment: dev
+spec:
+  selector:
+    app: webapp
+    team: team-alpha
+    environment: dev
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+---
+# NetworkPolicy for namespace isolation (optional)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: team-alpha-dev-isolation
+  namespace: team-alpha-dev
+  labels:
+    team: team-alpha
+    environment: dev
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from within the same namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: team-alpha-dev
+  # Allow traffic from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  # Allow traffic from ingress controllers
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS to Vault
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow database connections
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow HTTP/HTTPS for external APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443

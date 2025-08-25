@@ -6,7 +6,7 @@ This repository contains the complete EPIC documentation and implementation guid
 
 **Epic:** Onboard HashiCorp Vault Cloud for Keystore Management and Dynamic Key Rotation  
 **Status:** In Progress  
-**Timeline:** 8-12 weeks  
+**Timeline:** 10-14 weeks  
 **Priority:** High  
 
 ## 🎯 Business Goals
@@ -15,6 +15,8 @@ This repository contains the complete EPIC documentation and implementation guid
 - Implement secure keystore management with proper access controls
 - Enable dynamic key rotation for Azure services to reduce long-lived credential risks
 - Implement database dynamic credential rotation for enhanced security
+- Integrate Kubernetes with Vault using native authentication and Secrets Operator
+- Provide multiple secret consumption patterns for Kubernetes workloads
 - Ensure high availability, monitoring, and disaster recovery capabilities
 
 ## 📁 Repository Structure
@@ -30,8 +32,25 @@ vault/
 │   ├── user-guides/
 │   │   ├── 03-keystore-management-guide.md
 │   │   ├── 04-azure-dynamic-key-rotation.md
-│   │   └── 05-database-dynamic-key-rotation.md
+│   │   ├── 05-database-dynamic-key-rotation.md
+│   │   ├── 06-kubernetes-vault-integration.md
+│   │   └── 07-advanced-kubernetes-patterns.md
 │   └── operations/
+├── terraform/                          # Infrastructure as Code for Azure deployment
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars.example
+├── scripts/                           # Automation scripts
+│   ├── vault-initial-setup.sh
+│   ├── keystore-setup.sh
+│   ├── azure-setup.sh
+│   ├── database-setup.sh
+│   └── kubernetes-vault-setup.sh
+├── examples/                          # Integration examples
+│   ├── python/
+│   ├── kubernetes/
+│   └── docker/
 └── README.md
 ```
 
@@ -65,6 +84,18 @@ vault/
   - Support for PostgreSQL, MySQL, MongoDB, and more
   - Application integration examples
 
+- **[Kubernetes Vault Integration](docs/user-guides/06-kubernetes-vault-integration.md)**
+  - Kubernetes authentication with Vault
+  - Vault Secrets Operator deployment and configuration
+  - VaultAuth, VaultStaticSecret, and VaultDynamicSecret CRDs
+  - Multiple secret consumption patterns
+
+- **[Advanced Kubernetes Patterns](docs/user-guides/07-advanced-kubernetes-patterns.md)**
+  - Vault Agent Injector patterns (init containers and sidecars)
+  - Secrets Store CSI Driver integration
+  - GitOps workflows and multi-namespace patterns
+  - Performance optimization and security best practices
+
 ## 🎫 Epic Stories
 
 ### Story 1: Set up HashiCorp Vault Cloud Instance (8 points)
@@ -97,7 +128,27 @@ vault/
 - [ ] Alerts configured for critical events
 - [ ] Implementation pending
 
-### Story 6: Implement Backup and Disaster Recovery (8 points)
+### Story 6: Configure Kubernetes Authentication and Vault Secrets Operator (10 points)
+- [x] Kubernetes authentication method enabled and configured in Vault
+- [x] Service account token reviewer configured for Kubernetes auth
+- [x] Kubernetes roles and policies created for different namespaces
+- [x] Vault Secrets Operator deployed and configured in Kubernetes cluster
+- [x] VaultAuth and VaultStaticSecret custom resources tested
+- [x] Dynamic secret integration with VaultDynamicSecret tested
+- [x] Secret rotation and renewal policies configured
+- [x] Integration with multiple Kubernetes namespaces verified
+
+### Story 7: Implement Advanced Kubernetes Secret Management Patterns (8 points)
+- [x] Vault Agent init container pattern implemented and tested
+- [x] Vault Agent sidecar injection configured with annotations
+- [x] Secrets Store CSI Driver integration configured
+- [x] SecretProviderClass resources created for different secret types
+- [x] Volume mounting of secrets tested and verified
+- [x] Secret rotation and updates handled gracefully
+- [x] Performance and resource usage optimized
+- [x] Security isolation between namespaces verified
+
+### Story 8: Implement Backup and Disaster Recovery (8 points)
 - [ ] Automated backup procedures implemented
 - [ ] Disaster recovery runbooks created
 - [ ] Recovery procedures documented
@@ -108,6 +159,7 @@ vault/
 ### Prerequisites
 - HashiCorp Cloud Platform (HCP) account
 - Azure subscription with appropriate permissions
+- Kubernetes cluster access with admin privileges
 - Database access for testing
 - Network connectivity planning
 
@@ -116,6 +168,8 @@ vault/
 2. **Follow setup guide**: Use [Vault Cloud Setup Guide](docs/setup-guides/02-vault-cloud-setup-guide.md)
 3. **Configure keystore**: Implement using [Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)
 4. **Enable dynamic rotation**: Follow Azure and database guides as needed
+5. **Setup Kubernetes integration**: Configure using [Kubernetes Vault Integration](docs/user-guides/06-kubernetes-vault-integration.md)
+6. **Implement advanced patterns**: Deploy using [Advanced Kubernetes Patterns](docs/user-guides/07-advanced-kubernetes-patterns.md)
 
 ### Environment Variables
 ```bash
@@ -127,6 +181,10 @@ export VAULT_TOKEN="your-vault-token"
 # Azure configuration
 export AZURE_SUBSCRIPTION_ID="your-subscription-id"
 export AZURE_TENANT_ID="your-tenant-id"
+
+# Kubernetes configuration
+export KUBECONFIG="/path/to/your/kubeconfig"
+export KUBERNETES_NAMESPACE="vault-secrets-operator-system"
 ```
 
 ## 🔧 Implementation Examples
@@ -169,6 +227,76 @@ vault write database/config/postgresql \
 vault read database/creds/readonly
 ```
 
+### Kubernetes Integration
+
+#### Vault Secrets Operator
+```yaml
+# VaultAuth custom resource
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: default
+  namespace: webapp
+spec:
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: webapp
+    serviceAccount: webapp
+---
+# VaultStaticSecret for KV secrets
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: webapp-config
+  namespace: webapp
+spec:
+  type: kv-v2
+  mount: secret
+  path: webapp/config
+  destination:
+    name: webapp-config
+    create: true
+  vaultAuthRef: default
+```
+
+#### Vault Agent Injector
+```yaml
+# Pod with Vault Agent annotations
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+  annotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "webapp"
+    vault.hashicorp.com/agent-inject-secret-database: "secret/prod/webapp/database"
+spec:
+  serviceAccountName: webapp
+  containers:
+  - name: app
+    image: webapp:latest
+```
+
+#### Kubernetes Authentication Setup
+```bash
+# Enable Kubernetes auth method
+vault auth enable kubernetes
+
+# Configure Kubernetes auth
+vault write auth/kubernetes/config \
+    token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+    kubernetes_host="https://kubernetes.default.svc:443" \
+    kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+# Create Kubernetes role
+vault write auth/kubernetes/role/webapp \
+    bound_service_account_names=webapp \
+    bound_service_account_namespaces=production \
+    policies=webapp-policy \
+    ttl=1h
+```
+
 ## 📊 Success Metrics
 
 - [ ] Vault Cloud instance operational with 99.9% uptime
@@ -176,6 +304,8 @@ vault read database/creds/readonly
 - [ ] All secrets accessed through Vault with audit trails
 - [ ] Azure services using dynamic credentials exclusively
 - [ ] Database access using short-lived credentials only
+- [ ] Kubernetes workloads consuming secrets through Vault Secrets Operator
+- [ ] Multiple Kubernetes namespaces with proper secret isolation
 - [ ] Complete documentation and team training
 
 ## 🔍 Monitoring and Alerting
@@ -186,6 +316,9 @@ Key metrics to monitor:
 - Secret access patterns and anomalies
 - Dynamic credential generation rates
 - Lease renewal and revocation patterns
+- Kubernetes authentication events and token renewals
+- Vault Secrets Operator custom resource status
+- Secret synchronization success/failure rates
 
 ## 🛠️ Troubleshooting
 
@@ -194,15 +327,20 @@ Common issues and solutions are documented in each guide:
 - **Authentication failures**: Verify auth method configuration and user policies
 - **Permission denied**: Review Vault policies and Azure/database permissions
 - **Performance issues**: Monitor metrics and optimize configurations
+- **Kubernetes integration issues**: Verify service account configuration and RBAC
+- **Vault Secrets Operator problems**: Check custom resource status and operator logs
+- **Secret synchronization failures**: Review namespace policies and network connectivity
 
 ## 📈 Next Steps
 
 After completing the current epic:
 1. **Advanced Features**: Implement encryption-as-a-service, PKI management
 2. **Multi-Cloud**: Extend to AWS and Google Cloud dynamic credentials
-3. **Automation**: Implement GitOps workflows for Vault configuration
-4. **Compliance**: Add compliance monitoring and reporting
-5. **Advanced Monitoring**: Implement advanced analytics and anomaly detection
+3. **Advanced Kubernetes Patterns**: Implement GitOps workflows, multi-cluster federation
+4. **Automation**: Implement GitOps workflows for Vault configuration
+5. **Compliance**: Add compliance monitoring and reporting
+6. **Advanced Monitoring**: Implement advanced analytics and anomaly detection
+7. **Service Mesh Integration**: Integrate with Istio/Consul Connect for mTLS
 
 ## 🤝 Contributing
 
@@ -228,6 +366,10 @@ After completing the current epic:
 - [ ] Keystore management operational
 - [ ] Azure dynamic rotation tested
 - [ ] Database dynamic rotation tested
+- [ ] Kubernetes authentication configured and tested
+- [ ] Vault Secrets Operator deployed and operational
+- [ ] Kubernetes secret consumption patterns validated
+- [ ] Multi-namespace isolation verified
 - [ ] Monitoring and alerting configured
 - [ ] Backup and disaster recovery procedures in place
 - [ ] Documentation complete and reviewed
@@ -239,6 +381,8 @@ After completing the current epic:
 - [ ] Production deployment successful
 - [ ] All applications migrated to Vault
 - [ ] Static credentials removed
+- [ ] Kubernetes workloads using Vault secrets
+- [ ] Secret rotation policies active
 - [ ] Monitoring operational
 - [ ] Incident response procedures tested
 - [ ] Post-implementation review completed

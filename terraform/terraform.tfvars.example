@@ -1,0 +1,53 @@
+# Example Terraform configuration values for Vault Cloud setup
+# Copy this file to terraform.tfvars and modify as needed
+
+# HCP Authentication
+# Get these from HCP Console -> Account Settings -> Service Principals
+hcp_client_id     = "your-hcp-client-id"
+hcp_client_secret = "your-hcp-client-secret"
+
+# Azure Configuration
+azure_subscription_id = "12345678-1234-1234-1234-123456789012"
+azure_tenant_id       = "87654321-4321-4321-4321-210987654321"
+azure_region          = "East US"
+
+# Vault Cluster Configuration
+vault_cluster_id = "vault-production"
+vault_tier       = "standard_small"  # Options: dev, starter_small, standard_small, standard_medium, standard_large
+
+# Network Configuration
+hvn_id         = "vault-hvn"
+hvn_cidr_block = "172.25.16.0/20"
+
+# Public Endpoint Configuration
+public_endpoint_enabled = true
+ip_allowlist = [
+  {
+    cidr        = "203.0.113.0/24"
+    description = "Office network"
+  },
+  {
+    cidr        = "198.51.100.0/24"
+    description = "Production environment"
+  }
+]
+
+# VNet Peering Configuration (optional)
+enable_vnet_peering = false
+# vnet_name                = "vault-vnet"
+# vnet_resource_group_name = "vault-networking-rg"
+# vnet_cidr_block          = "10.0.0.0/16"
+
+# Monitoring Configuration (optional)
+# datadog_api_key = "your-datadog-api-key"
+# datadog_region  = "US1"
+
+# General Configuration
+environment = "prod"
+owner       = "platform-engineering"
+
+# Additional tags
+additional_tags = {
+  CostCenter = "infrastructure"
+  Compliance = "required"
+}

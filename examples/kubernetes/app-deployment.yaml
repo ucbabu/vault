@@ -1,0 +1,261 @@
+# Kubernetes integration example for Vault keystore management
+# This demonstrates how to securely inject secrets into applications using Vault Agent Injector
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: production
+  labels:
+    app: webapp
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+      annotations:
+        # Enable Vault Agent Injector
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "webapp"
+        vault.hashicorp.com/agent-pre-populate-only: "true"
+        
+        # Inject database configuration
+        vault.hashicorp.com/agent-inject-secret-database: "secret/prod/webapp/database"
+        vault.hashicorp.com/agent-inject-template-database: |
+          {{- with secret "secret/prod/webapp/database" -}}
+          export DB_HOST="{{ .Data.data.host }}"
+          export DB_PORT="{{ .Data.data.port }}"
+          export DB_NAME="{{ .Data.data.database }}"
+          export DB_USER="{{ .Data.data.username }}"
+          export DB_PASSWORD="{{ .Data.data.password }}"
+          export DB_SSL_MODE="{{ .Data.data.ssl_mode }}"
+          {{- end }}
+        
+        # Inject external service API keys
+        vault.hashicorp.com/agent-inject-secret-apikeys: "secret/prod/webapp/external-services"
+        vault.hashicorp.com/agent-inject-template-apikeys: |
+          {{- with secret "secret/prod/webapp/external-services" -}}
+          export STRIPE_PUBLISHABLE_KEY="{{ .Data.data.stripe_publishable_key }}"
+          export STRIPE_SECRET_KEY="{{ .Data.data.stripe_secret_key }}"
+          export SENDGRID_API_KEY="{{ .Data.data.sendgrid_api_key }}"
+          export AWS_ACCESS_KEY_ID="{{ .Data.data.aws_access_key_id }}"
+          export AWS_SECRET_ACCESS_KEY="{{ .Data.data.aws_secret_access_key }}"
+          {{- end }}
+        
+        # Inject application configuration
+        vault.hashicorp.com/agent-inject-secret-config: "secret/prod/webapp/config"
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret "secret/prod/webapp/config" -}}
+          export APP_NAME="{{ .Data.data.app_name }}"
+          export ENVIRONMENT="{{ .Data.data.environment }}"
+          export DEBUG="{{ .Data.data.debug }}"
+          export LOG_LEVEL="{{ .Data.data.log_level }}"
+          export SESSION_TIMEOUT="{{ .Data.data.session_timeout }}"
+          export JWT_SECRET="{{ .Data.data.jwt_secret }}"
+          export ENCRYPTION_KEY="{{ .Data.data.encryption_key }}"
+          {{- end }}
+        
+        # Configuration for Vault Agent
+        vault.hashicorp.com/agent-cache-enable: "true"
+        vault.hashicorp.com/agent-cache-use-auto-auth-token: "true"
+        vault.hashicorp.com/secret-volume-path: "/vault/secrets"
+        vault.hashicorp.com/agent-limits-cpu: "100m"
+        vault.hashicorp.com/agent-limits-mem: "128Mi"
+        vault.hashicorp.com/agent-requests-cpu: "50m"
+        vault.hashicorp.com/agent-requests-mem: "64Mi"
+    
+    spec:
+      serviceAccountName: webapp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      containers:
+      - name: webapp
+        image: webapp:v1.0.0
+        ports:
+        - containerPort: 8080
+          name: http
+        
+        # Environment variables from ConfigMap (non-sensitive)
+        envFrom:
+        - configMapRef:
+            name: webapp-config
+        
+        # Load secrets from Vault Agent
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          # Source all secret files
+          source /vault/secrets/database
+          source /vault/secrets/apikeys  
+          source /vault/secrets/config
+          
+          # Start the application
+          exec /app/webapp
+        
+        # Resource limits
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+
+---
+# ServiceAccount for the webapp
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp
+  namespace: production
+  annotations:
+    # Link to Vault Kubernetes auth role
+    vault.hashicorp.com/role: webapp
+
+---
+# ConfigMap for non-sensitive configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-config
+  namespace: production
+data:
+  PORT: "8080"
+  NODE_ENV: "production"
+  API_VERSION: "v1"
+  METRICS_ENABLED: "true"
+  HEALTH_CHECK_PATH: "/health"
+
+---
+# Service for the webapp
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+  namespace: production
+  labels:
+    app: webapp
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: webapp
+
+---
+# HorizontalPodAutoscaler for scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webapp
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapp
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webapp
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: webapp
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS for external APIs
+    - protocol: TCP
+      port: 53   # DNS
+    - protocol: UDP
+      port: 53   # DNS

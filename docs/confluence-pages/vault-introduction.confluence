@@ -1,0 +1,450 @@
+{info:title=HashiCorp Vault - Complete Guide for Multi-Team Onboarding}
+Welcome to the comprehensive HashiCorp Vault documentation for enterprise multi-team onboarding with HCP Vault Cloud and Kubernetes integration. This guide provides everything needed to implement secure, scalable secret management across your organization.
+{info}
+
+{panel:title=Documentation Overview|borderStyle=dashed|borderColor=#34495e|titleBGColor=#ecf0f1|bgColor=#f8f9fa}
+*Purpose:* Complete implementation guide for HashiCorp Vault Cloud multi-team onboarding
+*Scope:* Enterprise-grade secret management with Kubernetes integration and namespace isolation
+*Audience:* Platform Engineers, DevOps Teams, Security Engineers, Development Teams
+*Implementation Time:* 10-14 weeks for complete enterprise rollout
+{panel}
+
+h1. Table of Contents
+
+{toc:printable=true|style=square|maxLevel=2|indent=10px|minLevel=1|exclude=Table of Contents}
+
+h1. What is HashiCorp Vault?
+
+HashiCorp Vault is a powerful secrets management platform that provides secure storage, dynamic credential generation, and comprehensive access control for modern cloud-native applications and infrastructure.
+
+{panel:title=Core Vault Capabilities|borderStyle=solid|borderColor=#3498db|titleBGColor=#2980b9|titleColor=#ffffff}
+h4. Secrets Management
+• *Static Secrets:* Secure storage of API keys, passwords, certificates
+• *Dynamic Secrets:* On-demand credential generation for databases and cloud providers
+• *Encryption as a Service:* Application-level encryption without managing keys
+
+h4. Authentication & Authorization
+• *Multiple Auth Methods:* LDAP, OIDC, Kubernetes, Cloud provider authentication
+• *Fine-grained Policies:* Path-based access control with conditions
+• *Identity Management:* Centralized identity and group management
+
+h4. Security Features
+• *Zero Trust Architecture:* Never trust, always verify approach
+• *Audit Logging:* Comprehensive audit trails for compliance
+• *Secure Storage:* Encrypted at rest and in transit
+• *High Availability:* Clustering and disaster recovery capabilities
+{panel}
+
+h1. Why Multi-Team Onboarding?
+
+Organizations with multiple development teams face unique challenges in secret management, requiring isolation, governance, and scalability while maintaining security and operational efficiency.
+
+{panel:title=Enterprise Challenges|borderStyle=solid|borderColor=#e74c3c|titleBGColor=#c0392b|titleColor=#ffffff}
+h4. Security Challenges
+• Static secrets sprawled across multiple systems
+• Lack of secret rotation and lifecycle management
+• Insufficient access controls and audit trails
+• Manual secret distribution and updates
+
+h4. Operational Challenges
+• Team isolation and namespace management
+• Consistent onboarding processes across teams
+• Integration with existing CI/CD and Kubernetes workflows
+• Scaling secret management across multiple environments
+
+h4. Compliance Requirements
+• Regulatory compliance (SOX, PCI, GDPR)
+• Audit trail requirements and reporting
+• Access review and governance processes
+• Data residency and encryption requirements
+{panel}
+
+h1. Solution Architecture
+
+Our multi-team Vault implementation provides complete isolation using HCP Vault namespaces mapped to Kubernetes namespaces, enabling secure and scalable secret management.
+
+h2. High-Level Architecture
+
+{noformat}
+┌─────────────────────────────────────────────────────────────────┐
+│                    HCP Vault Cloud                             │
+├─────────────────────────────────────────────────────────────────┤
+│  admin/          │  platform/       │  team-alpha/    │ team-beta/ │
+│  ├─ policies/    │  ├─ shared/      │  ├─ dev/        │ ├─ dev/    │
+│  ├─ audit/       │  ├─ monitoring/  │  ├─ staging/    │ ├─ prod/   │
+│  └─ governance/  │  └─ infra/       │  └─ prod/       │ └─ ...     │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                          ┌─────────┴─────────┐
+                          │   Kubernetes      │
+                          │   Integration     │
+                          └─────────┬─────────┘
+                                    │
+┌─────────────────────────────────────────────────────────────────┐
+│                    Kubernetes Clusters                         │
+├─────────────────────────────────────────────────────────────────┤
+│  team-alpha-dev  │  team-alpha-prod │  team-beta-dev │ platform  │
+│  ├─ VaultAuth    │  ├─ VaultAuth    │ ├─ VaultAuth   │ ├─ Monitor │
+│  ├─ StaticSecret │  ├─ StaticSecret │ ├─ DynamicSec  │ ├─ Logging │
+│  └─ Applications │  └─ Applications │ └─ Apps        │ └─ Infra   │
+└─────────────────────────────────────────────────────────────────┘
+{noformat}
+
+h2. Key Architecture Benefits
+
+{panel:title=Architecture Advantages|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+• *Complete Isolation:* Each team operates in their own Vault namespace
+• *Kubernetes Native:* Seamless integration with Kubernetes workloads
+• *Automated Onboarding:* Standardized team setup and configuration
+• *Centralized Governance:* Platform-level control with team autonomy
+• *Scalable Design:* Easy addition of new teams and environments
+{panel}
+
+h1. Implementation Guides
+
+Navigate through our comprehensive guides to implement HashiCorp Vault for your organization. Each guide builds upon the previous ones, providing a complete implementation path.
+
+h2. 🚀 Getting Started
+
+{panel:title=Foundation Guides|borderStyle=solid|borderColor=#f39c12|titleBGColor=#e67e22|titleColor=#ffffff}
+Start here if you're new to Vault or setting up a fresh implementation.
+{panel}
+
+### [Keystore Management Guide|keystore-management-guide]
+
+{panel:title=📚 Keystore Management with HashiCorp Vault|borderStyle=dashed|borderColor=#9b59b6}
+*What you'll learn:*
+• KV secrets engine setup and configuration
+• Secret organization patterns and naming conventions  
+• Access control policies for different environments
+• Application integration with Python and Go examples
+• Monitoring, auditing, and troubleshooting
+
+*Prerequisites:* Basic Vault knowledge, admin access to Vault instance
+*Time to complete:* 2-3 hours
+*Difficulty:* Beginner to Intermediate
+
+*Key Topics:*
+• Enabling and configuring KV v2 secrets engine
+• Designing logical namespace structures for teams
+• Creating environment-specific access policies
+• Secret versioning and lifecycle management
+• Integration patterns for applications and CI/CD
+{panel}
+
+h2. 🔄 Dynamic Credential Management
+
+{panel:title=Advanced Secret Management|borderStyle=solid|borderColor=#8e44ad|titleBGColor=#9b59b6|titleColor=#ffffff}
+Implement dynamic credential generation for enhanced security and automation.
+{panel}
+
+### [Azure Dynamic Key Rotation|azure-dynamic-key-rotation]
+
+{panel:title=☁️ Azure Dynamic Key Rotation with HashiCorp Vault|borderStyle=dashed|borderColor=#0078d4}
+*What you'll learn:*
+• Azure secrets engine configuration and setup
+• Dynamic credential generation for Azure services
+• Lease management and automatic rotation
+• Application integration patterns for Python, Bash, and Terraform
+• Performance optimization and troubleshooting
+
+*Prerequisites:* Azure subscription with admin access, completed Keystore Management
+*Time to complete:* 3-4 hours  
+*Difficulty:* Intermediate
+
+*Key Topics:*
+• Setting up Azure service principals for Vault
+• Creating role-based credential generation
+• Implementing lease renewal and revocation
+• Integrating with CI/CD pipelines and applications
+• Monitoring credential usage and performance
+{panel}
+
+### [Database Dynamic Key Rotation|database-dynamic-key-rotation]
+
+{panel:title=🗄️ Database Dynamic Key Rotation with HashiCorp Vault|borderStyle=dashed|borderColor=#2c3e50}
+*What you'll learn:*
+• Multi-database support (PostgreSQL, MySQL, MongoDB, Redis)
+• Dynamic credential lifecycle management
+• Database-specific role configurations
+• Application integration with connection pooling
+• Security best practices and performance tuning
+
+*Prerequisites:* Database admin access, completed Keystore Management
+*Time to complete:* 4-5 hours
+*Difficulty:* Intermediate to Advanced
+
+*Key Topics:*
+• Configuring database secrets engines for multiple database types
+• Creating granular database roles and permissions
+• Implementing credential rotation strategies
+• Optimizing performance with connection pooling
+• Troubleshooting common database integration issues
+{panel}
+
+h2. ⚙️ Kubernetes Integration
+
+{panel:title=Container Platform Integration|borderStyle=solid|borderColor=#326ce5|titleBGColor=#4285f4|titleColor=#ffffff}
+Integrate Vault seamlessly with Kubernetes for cloud-native applications.
+{panel}
+
+### [Kubernetes Vault Integration|kubernetes-vault-integration]
+
+{panel:title=⚙️ Kubernetes Vault Integration|borderStyle=dashed|borderColor=#326ce5}
+*What you'll learn:*
+• Vault Secrets Operator installation and configuration
+• Kubernetes authentication with service accounts
+• Custom resource definitions (VaultAuth, VaultStaticSecret, VaultDynamicSecret)
+• Application deployment patterns with secret injection
+• Alternative Vault Agent Injector approach
+
+*Prerequisites:* Kubernetes admin access, basic Vault setup completed
+*Time to complete:* 3-4 hours
+*Difficulty:* Intermediate
+
+*Key Topics:*
+• Setting up native Kubernetes authentication with Vault
+• Deploying and configuring Vault Secrets Operator
+• Creating and managing custom resources for secret consumption
+• Implementing secure pod configurations with secrets
+• Monitoring and troubleshooting Kubernetes integration
+{panel}
+
+### [Advanced Kubernetes Patterns|advanced-kubernetes-patterns]
+
+{panel:title=🚀 Advanced Kubernetes Vault Patterns|borderStyle=dashed|borderColor=#ff6b35}
+*What you'll learn:*
+• GitOps workflows with ArgoCD and Kustomize
+• Multi-namespace and cross-cluster patterns
+• Performance optimization and caching strategies
+• Advanced security configurations and network policies
+• Automated secret rotation and disaster recovery
+
+*Prerequisites:* Completed basic Kubernetes integration, GitOps knowledge
+*Time to complete:* 5-6 hours
+*Difficulty:* Advanced
+
+*Key Topics:*
+• Implementing GitOps-driven secret management workflows
+• Designing cross-cluster secret distribution strategies  
+• Optimizing performance with caching and resource limits
+• Setting up automated secret rotation with custom controllers
+• Establishing disaster recovery and backup procedures
+{panel}
+
+h2. 👥 Multi-Team Implementation
+
+{panel:title=Enterprise Scale Deployment|borderStyle=solid|borderColor=#e74c3c|titleBGColor=#c0392b|titleColor=#ffffff}
+Scale Vault across multiple teams with proper isolation and governance.
+{panel}
+
+### [Multi-Team Onboarding with HCP Vault Namespaces|multi-team-onboarding]
+
+{panel:title=👥 Multi-Team Onboarding with HCP Vault Namespaces|borderStyle=dashed|borderColor=#8e44ad}
+*What you'll learn:*
+• HCP Vault namespace architecture and design
+• Automated team onboarding with scripts and workflows
+• Kubernetes namespace mapping strategies
+• Cross-team collaboration and shared resource patterns
+• Governance, monitoring, and access management
+
+*Prerequisites:* HCP Vault Plus/Enterprise, completed previous guides
+*Time to complete:* 6-8 hours
+*Difficulty:* Advanced
+
+*Key Topics:*
+• Designing scalable namespace hierarchies for teams
+• Implementing automated onboarding with validation
+• Configuring OIDC and enterprise authentication
+• Setting up cross-namespace secret sharing patterns
+• Establishing governance frameworks and audit procedures
+{panel}
+
+h1. Implementation Roadmap
+
+Follow this structured approach for successful Vault implementation across your organization.
+
+h2. Phase 1: Foundation (Weeks 1-3)
+
+{panel:title=Phase 1 Objectives|borderStyle=solid|borderColor=#3498db|titleBGColor=#2980b9|titleColor=#ffffff}
+Establish core Vault infrastructure and basic secret management capabilities.
+{panel}
+
+*Week 1-2: Infrastructure Setup*
+• Set up HCP Vault cluster and basic configuration
+• Configure initial authentication methods and admin policies
+• Implement keystore management with KV secrets engine
+• **Complete:** [Keystore Management Guide|keystore-management-guide]
+
+*Week 3: Dynamic Credentials*
+• Enable and configure database secrets engine
+• Set up Azure secrets engine for cloud credentials
+• Test dynamic credential generation and rotation
+• **Complete:** [Database Dynamic Key Rotation|database-dynamic-key-rotation] and [Azure Dynamic Key Rotation|azure-dynamic-key-rotation]
+
+*Phase 1 Success Criteria:*
+- [ ] Vault cluster operational with 99.9% uptime
+- [ ] KV secrets engine configured and tested
+- [ ] Database dynamic credentials working for dev environment
+- [ ] Azure dynamic credentials generating successfully
+- [ ] Basic monitoring and audit logging configured
+
+h2. Phase 2: Kubernetes Integration (Weeks 4-6)
+
+{panel:title=Phase 2 Objectives|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+Integrate Vault with Kubernetes for cloud-native application secret management.
+{panel}
+
+*Week 4-5: Basic Integration*
+• Install and configure Vault Secrets Operator
+• Set up Kubernetes authentication with Vault
+• Deploy basic secret consumption patterns
+• **Complete:** [Kubernetes Vault Integration|kubernetes-vault-integration]
+
+*Week 6: Advanced Patterns*
+• Implement GitOps workflows for secret management
+• Configure cross-namespace secret sharing
+• Set up performance optimization and monitoring
+• **Complete:** [Advanced Kubernetes Patterns|advanced-kubernetes-patterns]
+
+*Phase 2 Success Criteria:*
+- [ ] Vault Secrets Operator deployed and operational
+- [ ] Kubernetes authentication working for multiple namespaces
+- [ ] Applications consuming secrets via custom resources
+- [ ] GitOps workflows configured for secret management
+- [ ] Performance baselines established
+
+h2. Phase 3: Multi-Team Rollout (Weeks 7-12)
+
+{panel:title=Phase 3 Objectives|borderStyle=solid|borderColor=#e67e22|titleBGColor=#f39c12|titleColor=#ffffff}
+Scale Vault across multiple teams with proper isolation and governance.
+{panel}
+
+*Week 7-8: Namespace Architecture*
+• Design and implement Vault namespace hierarchy
+• Create automated team onboarding workflows
+• **Complete:** [Multi-Team Onboarding|multi-team-onboarding]
+
+*Week 9-10: Team Onboarding*
+• Onboard first 2-3 teams using automated processes
+• Configure team-specific authentication and policies
+• Set up cross-team collaboration patterns
+
+*Week 11-12: Production Readiness*
+• Implement comprehensive monitoring and alerting
+• Configure backup and disaster recovery procedures
+• Complete security review and compliance validation
+• Conduct team training and documentation review
+
+*Phase 3 Success Criteria:*
+- [ ] 5+ teams successfully onboarded with namespace isolation
+- [ ] Automated onboarding process validated and documented
+- [ ] Cross-team collaboration patterns working
+- [ ] Comprehensive monitoring and alerting operational
+- [ ] Disaster recovery procedures tested
+- [ ] Security and compliance review completed
+
+h2. Phase 4: Production Optimization (Weeks 13-14)
+
+{panel:title=Phase 4 Objectives|borderStyle=solid|borderColor=#8e44ad|titleBGColor=#9b59b6|titleColor=#ffffff}
+Optimize performance, establish operational excellence, and prepare for scale.
+{panel}
+
+*Week 13: Performance Optimization*
+• Analyze and optimize Vault performance metrics
+• Fine-tune secret rotation and caching strategies
+• Implement advanced monitoring and alerting
+
+*Week 14: Operational Excellence*
+• Establish operational runbooks and procedures
+• Complete team training and knowledge transfer
+• Conduct post-implementation review and lessons learned
+• Plan for future enhancements and scaling
+
+*Phase 4 Success Criteria:*
+- [ ] Performance optimized for production workloads
+- [ ] Operational procedures documented and tested
+- [ ] Team training completed for all stakeholders
+- [ ] Post-implementation review conducted
+- [ ] Future roadmap defined and approved
+
+h1. Success Metrics
+
+Track these key metrics to measure the success of your Vault implementation.
+
+{panel:title=Key Performance Indicators|borderStyle=solid|borderColor=#2c3e50|titleBGColor=#34495e|titleColor=#ffffff}
+h4. Security Metrics
+• *Zero Static Credentials:* 100% elimination of static secrets in production
+• *Secret Rotation:* All secrets rotating according to defined policies
+• *Access Compliance:* 100% compliance with access review procedures
+• *Audit Coverage:* Complete audit trail for all secret access
+
+h4. Operational Metrics  
+• *System Availability:* 99.9% uptime for Vault infrastructure
+• *Team Onboarding Time:* 50% reduction in new team setup time
+• *Support Ticket Reduction:* 40% reduction in secret-related support requests
+• *Automation Coverage:* 90% of secret management tasks automated
+
+h4. Business Metrics
+• *Compliance Readiness:* Full compliance with regulatory requirements
+• *Developer Productivity:* Faster deployment cycles with secure secret access
+• *Risk Reduction:* Measurable reduction in security incidents
+• *Cost Optimization:* Reduced operational overhead for secret management
+{panel}
+
+h1. Best Practices Summary
+
+{panel:title=Implementation Best Practices|borderStyle=solid|borderColor=#16a085|titleBGColor=#1abc9c|titleColor=#ffffff}
+h4. Security Best Practices
+• *Principle of Least Privilege:* Grant minimal required access for each role
+• *Defense in Depth:* Layer multiple security controls and monitoring
+• *Regular Audits:* Conduct periodic access reviews and policy updates
+• *Incident Response:* Maintain updated incident response procedures
+
+h4. Operational Best Practices
+• *Automation First:* Automate all repeatable secret management tasks
+• *Infrastructure as Code:* Manage Vault configuration with version control
+• *Monitoring and Alerting:* Implement comprehensive observability
+• *Documentation:* Maintain current documentation and runbooks
+
+h4. Team Collaboration
+• *Clear Ownership:* Define responsibilities for secret management
+• *Training Programs:* Provide ongoing education for teams
+• *Feedback Loops:* Establish mechanisms for continuous improvement
+• *Knowledge Sharing:* Foster cross-team collaboration and learning
+{panel}
+
+h1. Getting Help and Support
+
+{panel:title=Support Resources|borderStyle=solid|borderColor=#f39c12|titleBGColor=#e67e22|titleColor=#ffffff}
+h4. Internal Support
+• *Platform Engineering Team:* Primary support for Vault infrastructure
+• *Security Team:* Guidance on policies and compliance requirements
+• *DevOps Teams:* Assistance with application integration patterns
+
+h4. External Resources
+• *HashiCorp Documentation:* [vault.io/docs](https://www.vaultproject.io/docs)
+• *HCP Vault Support:* [cloud.hashicorp.com/support](https://cloud.hashicorp.com/support)
+• *Community Forum:* [discuss.hashicorp.com](https://discuss.hashicorp.com/c/vault)
+• *Training:* HashiCorp Learn platform and certification programs
+
+h4. Emergency Contacts
+• *Vault Infrastructure Issues:* Platform Engineering on-call
+• *Security Incidents:* Security team escalation procedures
+• *Business Critical Issues:* Management escalation paths
+{panel}
+
+h1. Conclusion
+
+This comprehensive guide provides everything needed to successfully implement HashiCorp Vault for multi-team secret management in enterprise environments. By following the structured approach and leveraging the detailed guides, organizations can achieve:
+
+• **Enhanced Security** through dynamic credentials and access controls
+• **Operational Efficiency** with automated secret management workflows  
+• **Team Scalability** using namespace isolation and standardized onboarding
+• **Compliance Readiness** with comprehensive audit trails and governance
+
+Start with the [Keystore Management Guide|keystore-management-guide] and progress through each implementation phase to build a robust, scalable secret management platform that serves your entire organization.
+
+{info:title=Ready to Get Started?}
+Begin your Vault journey with the [Keystore Management Guide|keystore-management-guide] to establish the foundation for secure secret management across your organization.
+{info}

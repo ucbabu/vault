@@ -1,0 +1,548 @@
+{info:title=Advanced Kubernetes Vault Patterns}
+Advanced integration patterns for Vault and Kubernetes including GitOps workflows, multi-namespace patterns, and performance optimization.
+{info}
+
+{panel:title=Page Information|borderStyle=dashed|borderColor=#ccc|titleBGColor=#d9ead3|bgColor=#f9f9f9}
+*Target Audience:* Senior Kubernetes Engineers, Platform Architects, SRE Teams
+*Prerequisites:* Basic Kubernetes-Vault integration, GitOps knowledge
+*Related Pages:* [Kubernetes Integration|06-kubernetes-vault-integration], [Multi-Team Onboarding|08-multi-team-onboarding]
+{panel}
+
+h1. Overview
+
+Advanced Kubernetes-Vault patterns enable enterprise-scale secret management with GitOps workflows, performance optimization, and advanced security patterns.
+
+{panel:title=Advanced Patterns|borderStyle=solid|borderColor=#8e44ad|titleBGColor=#9b59b6|titleColor=#ffffff}
+• GitOps-driven secret management workflows
+• Cross-namespace and multi-cluster patterns
+• Performance optimization and caching strategies
+• Advanced security isolation and policies
+• Automated secret rotation workflows
+{panel}
+
+h1. GitOps Workflows
+
+h2. ArgoCD Integration
+
+{code:language=yaml|title=ArgoCD Application for Vault Resources}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/company/vault-k8s-config
+    targetRevision: main
+    path: environments/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+{code}
+
+h2. Git Repository Structure
+
+{noformat}
+vault-k8s-config/
+├── base/
+│   ├── vaultconnection.yaml
+│   ├── policies/
+│   └── kustomization.yaml
+├── environments/
+│   ├── dev/
+│   │   ├── vaultauth.yaml
+│   │   ├── secrets/
+│   │   └── kustomization.yaml
+│   ├── staging/
+│   └── production/
+└── teams/
+    ├── team-alpha/
+    ├── team-beta/
+    └── platform/
+{noformat}
+
+h2. Kustomize Configuration
+
+{code:language=yaml|title=Base Kustomization}
+# base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- vaultconnection.yaml
+
+commonLabels:
+  managed-by: gitops
+  component: vault-secrets
+{code}
+
+h1. Multi-Namespace Patterns
+
+h2. Shared VaultConnection
+
+{code:language=yaml|title=Cluster-wide VaultConnection}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: shared-vault
+  namespace: vault-secrets-operator-system
+spec:
+  address: "https://vault.example.com:8200"
+  skipTLSVerify: false
+  # Global connection available to all namespaces
+{code}
+
+h2. Namespace-specific VaultAuth
+
+{code:language=yaml|title=Team-specific Authentication}
+# Namespace: team-alpha
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: team-alpha-auth
+  namespace: team-alpha
+spec:
+  vaultConnectionRef: vault-secrets-operator-system/shared-vault
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: team-alpha
+    serviceAccount: default
+---
+# Namespace: team-beta  
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: team-beta-auth
+  namespace: team-beta
+spec:
+  vaultConnectionRef: vault-secrets-operator-system/shared-vault
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: team-beta
+    serviceAccount: default
+{code}
+
+h1. Performance Optimization
+
+h2. Secret Caching Strategy
+
+{code:language=yaml|title=Optimized Secret Configuration}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: cached-config
+  namespace: production
+spec:
+  type: kv-v2
+  mount: secret
+  path: app/config
+  destination:
+    name: app-config
+    create: true
+  vaultAuthRef: production-auth
+  
+  # Optimize refresh intervals
+  refreshAfter: 300s  # 5 minutes for frequently changing secrets
+  
+  # Enable client-side caching
+  hmacSecretData: true
+{code}
+
+h2. Resource Optimization
+
+{code:language=yaml|title=Operator Resource Limits}
+# Vault Secrets Operator resource configuration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-secrets-operator-controller-manager
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        # Increase worker concurrency
+        - name: MAX_CONCURRENT_RECONCILES
+          value: "10"
+        # Optimize API rate limiting
+        - name: CLIENT_CACHE_SIZE
+          value: "1000"
+{code}
+
+h1. Advanced Security Patterns
+
+h2. Network Policies
+
+{code:language=yaml|title=Vault Network Isolation}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-secrets-operator
+  namespace: vault-secrets-operator-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-secrets-operator
+  policyTypes:
+  - Egress
+  egress:
+  # Allow HTTPS to Vault
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+{code}
+
+h2. Pod Security Standards
+
+{code:language=yaml|title=Secure Pod Configuration}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-webapp
+  labels:
+    app: webapp
+spec:
+  serviceAccountName: webapp
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: webapp
+    image: webapp:latest
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities:
+        drop:
+        - ALL
+    env:
+    - name: DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: webapp-db-creds
+          key: password
+    volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+  volumes:
+  - name: tmp
+    emptyDir: {}
+{code}
+
+h1. Cross-Cluster Patterns
+
+h2. Multi-Cluster Secret Distribution
+
+{code:language=yaml|title=Cross-Cluster Secret Sync}
+# Cluster A - Source secrets
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: shared-config
+  namespace: platform
+  annotations:
+    sync.example.com/replicate: "true"
+    sync.example.com/target-clusters: "cluster-b,cluster-c"
+spec:
+  type: kv-v2
+  mount: secret
+  path: shared/platform-config
+  destination:
+    name: platform-config
+    create: true
+  vaultAuthRef: platform-auth
+{code}
+
+h2. External Secrets Operator Integration
+
+{code:language=yaml|title=External Secrets for Cross-Cluster}
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: vault-backend
+  namespace: production
+spec:
+  provider:
+    vault:
+      server: "https://vault.example.com:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "production"
+          serviceAccountRef:
+            name: "external-secrets"
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: app-config
+  namespace: production
+spec:
+  refreshInterval: 300s
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: app-config
+    creationPolicy: Owner
+  data:
+  - secretKey: database_url
+    remoteRef:
+      key: app/config
+      property: database_url
+{code}
+
+h1. Automated Secret Rotation
+
+h2. Custom Controller for Rotation
+
+{code:language=go|title=Secret Rotation Controller}
+package main
+
+import (
+    "context"
+    "time"
+    
+    "k8s.io/client-go/kubernetes"
+    "sigs.k8s.io/controller-runtime/pkg/controller"
+    "sigs.k8s.io/controller-runtime/pkg/handler"
+    "sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+type SecretRotationController struct {
+    client.Client
+    vaultClient VaultClient
+}
+
+func (r *SecretRotationController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    var secret corev1.Secret
+    if err := r.Get(ctx, req.NamespacedName, &secret); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+    
+    // Check if secret needs rotation
+    if needsRotation, err := r.checkRotationNeeded(&secret); err != nil {
+        return ctrl.Result{}, err
+    } else if needsRotation {
+        return r.rotateSecret(ctx, &secret)
+    }
+    
+    // Schedule next check
+    return ctrl.Result{RequeueAfter: time.Hour}, nil
+}
+
+func (r *SecretRotationController) checkRotationNeeded(secret *corev1.Secret) (bool, error) {
+    rotationInterval := secret.Annotations["vault.example.com/rotation-interval"]
+    lastRotated := secret.Annotations["vault.example.com/last-rotated"]
+    
+    // Implementation logic for rotation check
+    return false, nil
+}
+{code}
+
+h2. CronJob-based Rotation
+
+{code:language=yaml|title=Scheduled Secret Rotation}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: secret-rotation
+  namespace: platform
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: secret-rotator
+          containers:
+          - name: rotator
+            image: vault-secret-rotator:latest
+            env:
+            - name: VAULT_ADDR
+              value: "https://vault.example.com:8200"
+            - name: ROTATION_STRATEGY
+              value: "gradual"
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Rotate database credentials
+              kubectl patch vaultdynamicsecret webapp-db-creds \
+                --type='merge' \
+                -p='{"metadata":{"annotations":{"vault.example.com/force-rotation":"$(date +%s)"}}}'
+              
+              # Wait for new credentials
+              sleep 60
+              
+              # Restart application pods
+              kubectl rollout restart deployment/webapp
+          restartPolicy: OnFailure
+{code}
+
+h1. Monitoring and Observability
+
+h2. Prometheus Metrics
+
+{code:language=yaml|title=ServiceMonitor for Vault Secrets Operator}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vault-secrets-operator
+  namespace: vault-secrets-operator-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault-secrets-operator
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+{code}
+
+h2. Custom Alerts
+
+{code:language=yaml|title=PrometheusRule for Vault Secrets}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vault-secrets-alerts
+  namespace: vault-secrets-operator-system
+spec:
+  groups:
+  - name: vault-secrets
+    rules:
+    - alert: VaultSecretSyncFailure
+      expr: increase(vault_secrets_operator_sync_errors_total[5m]) > 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Vault secret sync failures detected"
+        description: "Secret sync errors in namespace {{ $labels.namespace }}"
+        
+    - alert: VaultConnectionDown
+      expr: vault_secrets_operator_vault_connection_status == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Vault connection is down"
+        description: "Cannot connect to Vault from Kubernetes cluster"
+{code}
+
+h1. Disaster Recovery
+
+h2. Backup Strategy
+
+{code:language=bash|title=Backup Vault Kubernetes Resources}
+#!/bin/bash
+# backup-vault-resources.sh
+
+BACKUP_DIR="/backup/vault-k8s/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+# Backup CRDs
+kubectl get crd -o yaml \
+    vaultauths.secrets.hashicorp.com \
+    vaultconnections.secrets.hashicorp.com \
+    vaultstaticsecrets.secrets.hashicorp.com \
+    vaultdynamicsecrets.secrets.hashicorp.com \
+    > "$BACKUP_DIR/crds.yaml"
+
+# Backup Vault resources across all namespaces
+for resource in vaultauth vaultconnection vaultstaticsecret vaultdynamicsecret; do
+    kubectl get "$resource" -A -o yaml > "$BACKUP_DIR/${resource}s.yaml"
+done
+
+# Backup operator configuration
+kubectl get deployment vault-secrets-operator-controller-manager \
+    -n vault-secrets-operator-system -o yaml \
+    > "$BACKUP_DIR/operator.yaml"
+
+echo "Backup completed: $BACKUP_DIR"
+{code}
+
+h2. Recovery Procedures
+
+{code:language=bash|title=Disaster Recovery Script}
+#!/bin/bash
+# restore-vault-resources.sh
+
+BACKUP_DIR="$1"
+
+if [[ -z "$BACKUP_DIR" ]]; then
+    echo "Usage: $0 <backup-directory>"
+    exit 1
+fi
+
+# Restore CRDs first
+kubectl apply -f "$BACKUP_DIR/crds.yaml"
+
+# Wait for CRDs to be ready
+kubectl wait --for condition=established --timeout=60s \
+    crd/vaultauths.secrets.hashicorp.com \
+    crd/vaultconnections.secrets.hashicorp.com \
+    crd/vaultstaticsecrets.secrets.hashicorp.com \
+    crd/vaultdynamicsecrets.secrets.hashicorp.com
+
+# Restore operator
+kubectl apply -f "$BACKUP_DIR/operator.yaml"
+
+# Restore Vault resources
+for resource_file in vaultconnections.yaml vaultauths.yaml vaultstaticsecrets.yaml vaultdynamicsecrets.yaml; do
+    kubectl apply -f "$BACKUP_DIR/$resource_file"
+done
+
+echo "Recovery completed from: $BACKUP_DIR"
+{code}
+
+h1. Related Documentation
+
+{panel:title=Related Pages|borderStyle=solid|borderColor=#3498db|titleBGColor=#ebf3fd}
+• [Kubernetes Integration|06-kubernetes-vault-integration] - Basic integration setup
+• [Multi-Team Onboarding|08-multi-team-onboarding] - Team namespace patterns
+• [Database Dynamic Keys|05-database-dynamic-key-rotation] - Dynamic credential patterns
+• [Azure Dynamic Keys|04-azure-dynamic-key-rotation] - Cloud integration patterns
+{panel}
+
+{info:title=Next Steps}
+Advanced implementation considerations:
+1. Implement comprehensive monitoring and alerting
+2. Set up automated testing for secret rotation workflows
+3. Establish disaster recovery procedures and testing
+4. Configure advanced security policies and network isolation
+5. Implement cross-cluster secret distribution strategies
+{info}

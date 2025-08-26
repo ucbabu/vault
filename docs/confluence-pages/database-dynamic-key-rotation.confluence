@@ -1,0 +1,265 @@
+{info:title=Database Dynamic Key Rotation with HashiCorp Vault}
+Implement dynamic database credential generation using Vault's Database secrets engine to eliminate static passwords and enhance security.
+{info}
+
+{panel:title=Page Information|borderStyle=dashed|borderColor=#ccc|titleBGColor=#d9ead3|bgColor=#f9f9f9}
+*Target Audience:* Database Administrators, DevOps Engineers, Developers
+*Prerequisites:* Database admin access, Vault cluster, network connectivity
+*Related Pages:* [Keystore Management|03-keystore-management-guide], [Azure Dynamic Keys|04-azure-dynamic-key-rotation]
+{panel}
+
+h1. Overview
+
+Database dynamic key rotation generates temporary database credentials on-demand, eliminating static passwords and reducing security risks through automated credential lifecycle management.
+
+{panel:title=Key Benefits|borderStyle=solid|borderColor=#2c3e50|titleBGColor=#34495e|titleColor=#ffffff}
+• Short-lived credentials (minutes to hours)
+• Automatic cleanup when expired
+• Role-based database access control
+• Zero static secrets in applications
+• Complete audit trail
+{panel}
+
+h1. Supported Databases
+
+{panel:title=Supported Database Types|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+*SQL:* PostgreSQL, MySQL/MariaDB, SQL Server, Oracle
+*NoSQL:* MongoDB, Cassandra, Redis, Elasticsearch
+*Others:* InfluxDB, CouchDB, HanaDB
+{panel}
+
+h1. Setup
+
+h2. Enable Database Engine
+
+{code:language=bash|title=Enable Database Secrets Engine}
+# Enable database secrets engine
+vault secrets enable database
+
+# Verify enabled
+vault secrets list
+{code}
+
+h2. PostgreSQL Configuration
+
+{code:language=bash|title=PostgreSQL Setup}
+# Configure connection
+vault write database/config/postgresql \
+    plugin_name=postgresql-database-plugin \
+    connection_url="postgresql://{{username}}:{{password}}@postgres.example.com:5432/mydb?sslmode=require" \
+    allowed_roles="readonly,readwrite" \
+    username="vault_admin" \
+    password="admin_password"
+
+# Create read-only role
+vault write database/roles/readonly \
+    db_name=postgresql \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h"
+
+# Create read-write role
+vault write database/roles/readwrite \
+    db_name=postgresql \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"{{name}}\";" \
+    revocation_statements="DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="2h" \
+    max_ttl="8h"
+{code}
+
+h2. MySQL Configuration
+
+{code:language=bash|title=MySQL Setup}
+# Configure connection
+vault write database/config/mysql \
+    plugin_name=mysql-database-plugin \
+    connection_url="{{username}}:{{password}}@tcp(mysql.example.com:3306)/" \
+    allowed_roles="app,readonly" \
+    username="vault_admin" \
+    password="admin_password"
+
+# Create application role
+vault write database/roles/app \
+    db_name=mysql \
+    creation_statements="CREATE USER '{{name}}'@'%' IDENTIFIED BY '{{password}}'; GRANT SELECT, INSERT, UPDATE, DELETE ON myapp.* TO '{{name}}'@'%';" \
+    revocation_statements="DROP USER '{{name}}'@'%';" \
+    default_ttl="1h" \
+    max_ttl="4h"
+{code}
+
+h2. MongoDB Configuration
+
+{code:language=bash|title=MongoDB Setup}
+# Configure connection
+vault write database/config/mongodb \
+    plugin_name=mongodb-database-plugin \
+    connection_url="mongodb://{{username}}:{{password}}@mongo.example.com:27017/admin" \
+    allowed_roles="app,readonly" \
+    username="vault_admin" \
+    password="admin_password"
+
+# Create application role
+vault write database/roles/app \
+    db_name=mongodb \
+    creation_statements='{"db": "myapp", "roles": [{"role": "readWrite", "db": "myapp"}]}' \
+    default_ttl="2h" \
+    max_ttl="6h"
+{code}
+
+h1. Credential Management
+
+h2. Generate Credentials
+
+{code:language=bash|title=Generate Database Credentials}
+# Generate credentials
+vault read database/creds/readonly
+
+# Example output:
+# lease_id           database/creds/readonly/abc123
+# lease_duration     3600
+# password           A1a-randompassword123
+# username           v-token-readonly-xyz789
+
+# Store in variables
+DB_CREDS=$(vault read -format=json database/creds/readonly)
+LEASE_ID=$(echo $DB_CREDS | jq -r '.lease_id')
+USERNAME=$(echo $DB_CREDS | jq -r '.data.username')
+PASSWORD=$(echo $DB_CREDS | jq -r '.data.password')
+{code}
+
+h2. Lease Management
+
+{code:language=bash|title=Manage Credential Leases}
+# Renew lease
+vault lease renew $LEASE_ID
+
+# Renew with specific duration
+vault lease renew -increment=3600 $LEASE_ID
+
+# Revoke lease
+vault lease revoke $LEASE_ID
+
+# List active leases
+vault list sys/leases/lookup/database/creds/readonly
+{code}
+
+h1. Application Integration
+
+h2. Python Example
+
+{code:language=python|title=Python Integration}
+import hvac
+import psycopg2
+from contextlib import contextmanager
+
+class DatabaseVaultClient:
+    def __init__(self, vault_url, vault_token):
+        self.vault_client = hvac.Client(url=vault_url, token=vault_token)
+        
+    def get_credentials(self, role_name):
+        response = self.vault_client.read(f'database/creds/{role_name}')
+        return {
+            'username': response['data']['username'],
+            'password': response['data']['password'],
+            'lease_id': response['lease_id']
+        }
+    
+    @contextmanager
+    def get_postgres_connection(self, role_name, host, database):
+        creds = self.get_credentials(role_name)
+        connection = None
+        try:
+            connection = psycopg2.connect(
+                host=host, database=database,
+                user=creds['username'], password=creds['password']
+            )
+            yield connection
+        finally:
+            if connection:
+                connection.close()
+            self.vault_client.sys.revoke_lease(creds['lease_id'])
+
+# Usage
+vault_client = DatabaseVaultClient(
+    "https://vault.example.com:8200", "hvs.token"
+)
+
+with vault_client.get_postgres_connection('readonly', 'db.example.com', 'myapp') as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    print(f"Users: {cursor.fetchone()[0]}")
+{code}
+
+h2. Shell Script Example
+
+{code:language=bash|title=Bash Integration}
+#!/bin/bash
+# Get credentials and connect to database
+
+ROLE_NAME="readonly"
+DB_HOST="postgres.example.com"
+
+# Get credentials from Vault
+CREDS=$(vault read -format=json database/creds/$ROLE_NAME)
+USERNAME=$(echo $CREDS | jq -r '.data.username')
+PASSWORD=$(echo $CREDS | jq -r '.data.password')
+LEASE_ID=$(echo $CREDS | jq -r '.lease_id')
+
+# Cleanup function
+cleanup() {
+    vault lease revoke $LEASE_ID
+}
+trap cleanup EXIT
+
+# Connect to database
+export PGHOST=$DB_HOST PGUSER=$USERNAME PGPASSWORD=$PASSWORD
+psql -d myapp -c "SELECT COUNT(*) FROM users"
+{code}
+
+h1. Best Practices
+
+{panel:title=Security & Performance|borderStyle=solid|borderColor=#e67e22|titleBGColor=#f39c12|titleColor=#ffffff}
+*Security:*
+• Use principle of least privilege for roles
+• Enable comprehensive audit logging
+• Restrict database access by network
+• Regular role and policy reviews
+
+*Performance:*
+• Cache credentials with TTL handling
+• Renew at 2/3 of lease duration
+• Use connection pooling
+• Monitor credential generation rates
+{panel}
+
+h1. Troubleshooting
+
+{expand:title=Common Issues}
+*Credential Generation Fails:*
+• Test connectivity: {{vault write database/config/db/verify-connection}}
+• Check admin user permissions in database
+• Verify connection string format
+
+*Authentication Failures:*
+• Check credential TTL and timing
+• Wait for user propagation (30 seconds)
+• Verify network connectivity
+• Review database authentication logs
+{expand}
+
+h1. Related Documentation
+
+{panel:title=Related Pages|borderStyle=solid|borderColor=#3498db|titleBGColor=#ebf3fd}
+• [Keystore Management|03-keystore-management-guide] - Static secrets
+• [Azure Dynamic Keys|04-azure-dynamic-key-rotation] - Cloud credentials
+• [Kubernetes Integration|06-kubernetes-vault-integration] - Container workloads
+• [Multi-Team Onboarding|08-multi-team-onboarding] - Team isolation
+{panel}
+
+{info:title=Next Steps}
+After setup:
+1. Configure monitoring for credential lifecycle
+2. Integrate with Kubernetes using Vault Secrets Operator
+3. Set up automated testing workflows
+4. Establish performance baselines
+{info}

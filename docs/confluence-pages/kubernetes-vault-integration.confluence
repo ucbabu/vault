@@ -1,0 +1,481 @@
+{info:title=Kubernetes Vault Integration}
+Complete guide for integrating HashiCorp Vault with Kubernetes using native authentication and the Vault Secrets Operator for secure secret management.
+{info}
+
+{panel:title=Page Information|borderStyle=dashed|borderColor=#ccc|titleBGColor=#d9ead3|bgColor=#f9f9f9}
+*Target Audience:* Kubernetes Engineers, Platform Engineers, DevOps Teams
+*Prerequisites:* Kubernetes cluster admin access, Vault cluster access
+*Related Pages:* [Keystore Management|03-keystore-management-guide], [Multi-Team Onboarding|08-multi-team-onboarding]
+{panel}
+
+h1. Overview
+
+Kubernetes-Vault integration enables secure, dynamic secret management for containerized applications using native Kubernetes authentication and the Vault Secrets Operator.
+
+{panel:title=Integration Benefits|borderStyle=solid|borderColor=#2980b9|titleBGColor=#3498db|titleColor=#ffffff}
+• Native Kubernetes authentication with service accounts
+• Dynamic secret injection without code changes
+• Automatic secret rotation and renewal
+• Fine-grained access control per namespace
+• Complete audit trail of secret access
+{panel}
+
+h1. Architecture
+
+{panel:title=Integration Components|borderStyle=solid|borderColor=#8e44ad|titleBGColor=#9b59b6|titleColor=#ffffff}
+*Vault Secrets Operator:* Kubernetes-native secret management
+*Kubernetes Auth Method:* Service account-based authentication
+*Custom Resources:* VaultAuth, VaultStaticSecret, VaultDynamicSecret
+*Service Accounts:* Workload identity for Vault authentication
+{panel}
+
+h1. Prerequisites
+
+h2. Kubernetes Requirements
+
+{code:language=bash|title=Verify Kubernetes Prerequisites}
+# Check Kubernetes version (1.19+)
+kubectl version --short
+
+# Verify cluster admin access
+kubectl auth can-i '*' '*' --all-namespaces
+
+# Check for existing Vault Secrets Operator
+kubectl get deployment vault-secrets-operator-controller-manager -n vault-secrets-operator-system
+{code}
+
+h2. Vault Requirements
+
+{code:language=bash|title=Verify Vault Prerequisites}
+# Check Vault connectivity
+vault status
+
+# Verify admin permissions
+vault auth list
+vault secrets list
+{code}
+
+h1. Setup
+
+h2. 1. Enable Kubernetes Authentication
+
+{code:language=bash|title=Enable Kubernetes Auth Method}
+# Enable Kubernetes auth method
+vault auth enable kubernetes
+
+# Get Kubernetes cluster info
+K8S_HOST=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.server}')
+K8S_CA_CERT=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.certificate-authority-data}' | base64 -d)
+
+# Create service account for Vault
+kubectl create namespace vault-secrets-operator-system
+kubectl create serviceaccount vault-auth -n vault-secrets-operator-system
+
+# Create cluster role binding
+kubectl create clusterrolebinding vault-auth-delegator \
+    --clusterrole=system:auth-delegator \
+    --serviceaccount=vault-secrets-operator-system:vault-auth
+
+# Get service account token
+REVIEWER_JWT=$(kubectl create token vault-auth -n vault-secrets-operator-system --duration=8760h)
+
+# Configure Kubernetes auth in Vault
+vault write auth/kubernetes/config \
+    token_reviewer_jwt="$REVIEWER_JWT" \
+    kubernetes_host="$K8S_HOST" \
+    kubernetes_ca_cert="$K8S_CA_CERT" \
+    issuer="https://kubernetes.default.svc.cluster.local"
+{code}
+
+h2. 2. Install Vault Secrets Operator
+
+{expand:title=Helm Installation}
+{code:language=bash|title=Install via Helm}
+# Add HashiCorp Helm repository
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
+# Install Vault Secrets Operator
+helm install vault-secrets-operator hashicorp/vault-secrets-operator \
+    --namespace vault-secrets-operator-system \
+    --create-namespace
+
+# Verify installation
+kubectl get pods -n vault-secrets-operator-system
+kubectl wait --for=condition=available --timeout=300s \
+    deployment/vault-secrets-operator-controller-manager \
+    -n vault-secrets-operator-system
+{code}
+{expand}
+
+{expand:title=kubectl Installation}
+{code:language=bash|title=Install via kubectl}
+# Install CRDs and operator
+kubectl apply -f https://raw.githubusercontent.com/hashicorp/vault-secrets-operator/main/config/crd/bases/secrets.hashicorp.com_vaultauths.yaml
+kubectl apply -f https://raw.githubusercontent.com/hashicorp/vault-secrets-operator/main/config/crd/bases/secrets.hashicorp.com_vaultconnections.yaml
+kubectl apply -f https://raw.githubusercontent.com/hashicorp/vault-secrets-operator/main/config/crd/bases/secrets.hashicorp.com_vaultstaticsecrets.yaml
+kubectl apply -f https://raw.githubusercontent.com/hashicorp/vault-secrets-operator/main/config/crd/bases/secrets.hashicorp.com_vaultdynamicsecrets.yaml
+
+# Install operator
+kubectl apply -f https://raw.githubusercontent.com/hashicorp/vault-secrets-operator/main/config/manager/manager.yaml
+{code}
+{expand}
+
+h2. 3. Create Vault Policies and Roles
+
+{code:language=bash|title=Create Vault Policies}
+# Create application policy
+cat > webapp-policy.hcl << 'EOF'
+# Read application secrets
+path "secret/data/webapp/*" {
+  capabilities = ["read"]
+}
+
+# Generate database credentials
+path "database/creds/webapp" {
+  capabilities = ["read"]
+}
+EOF
+
+vault policy write webapp-policy webapp-policy.hcl
+
+# Create Kubernetes role
+vault write auth/kubernetes/role/webapp \
+    bound_service_account_names=webapp \
+    bound_service_account_namespaces=default \
+    policies=webapp-policy \
+    ttl=1h \
+    max_ttl=4h
+{code}
+
+h1. Custom Resources
+
+h2. VaultConnection
+
+{code:language=yaml|title=VaultConnection Resource}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: default
+  namespace: default
+spec:
+  # Vault cluster address
+  address: "https://vault.example.com:8200"
+  
+  # Skip TLS verification (not recommended for production)
+  skipTLSVerify: false
+  
+  # Optional: Vault namespace (Enterprise feature)
+  # vaultNamespace: "app-team"
+  
+  # Optional: Custom CA certificate
+  # caCertSecretRef: "vault-ca-cert"
+{code}
+
+h2. VaultAuth
+
+{code:language=yaml|title=VaultAuth Resource}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: webapp-auth
+  namespace: default
+spec:
+  # Reference to VaultConnection
+  vaultConnectionRef: default
+  
+  # Authentication method
+  method: kubernetes
+  mount: kubernetes
+  
+  # Kubernetes-specific configuration
+  kubernetes:
+    role: webapp
+    serviceAccount: webapp
+    
+  # Optional: Custom audiences
+  # audiences: ["vault", "custom-audience"]
+{code}
+
+h2. VaultStaticSecret
+
+{code:language=yaml|title=VaultStaticSecret for KV Secrets}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: webapp-config
+  namespace: default
+spec:
+  # Secret type and path
+  type: kv-v2
+  mount: secret
+  path: webapp/config
+  
+  # Destination Kubernetes secret
+  destination:
+    name: webapp-config
+    create: true
+    
+  # Authentication reference
+  vaultAuthRef: webapp-auth
+  
+  # Refresh interval
+  refreshAfter: 30s
+  
+  # Optional: Transform secret data
+  # hmacSecretData: true
+{code}
+
+h2. VaultDynamicSecret
+
+{code:language=yaml|title=VaultDynamicSecret for Database Credentials}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultDynamicSecret
+metadata:
+  name: webapp-db-creds
+  namespace: default
+spec:
+  # Dynamic secret path
+  mount: database
+  path: creds/webapp
+  
+  # Destination Kubernetes secret
+  destination:
+    name: webapp-db-creds
+    create: true
+    
+  # Authentication reference
+  vaultAuthRef: webapp-auth
+  
+  # Renewal settings
+  renewalPercent: 67
+  revoke: true
+  
+  # Optional: Custom TTL
+  # allowStaticCreds: false
+{code}
+
+h1. Application Integration
+
+h2. Deployment Example
+
+{code:language=yaml|title=Application Deployment with Vault Secrets}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      serviceAccountName: webapp
+      containers:
+      - name: webapp
+        image: nginx:alpine
+        env:
+        # Static secrets from VaultStaticSecret
+        - name: APP_NAME
+          valueFrom:
+            secretKeyRef:
+              name: webapp-config
+              key: app_name
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: webapp-config
+              key: api_key
+              
+        # Dynamic database credentials
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: webapp-db-creds
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: webapp-db-creds
+              key: password
+              
+        ports:
+        - containerPort: 80
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+{code}
+
+h1. Vault Agent Injector
+
+{panel:title=Alternative: Vault Agent Injector|borderStyle=solid|borderColor=#f39c12|titleBGColor=#e67e22|titleColor=#ffffff}
+The Vault Agent Injector provides an alternative approach using pod annotations for secret injection via init containers or sidecars.
+{panel}
+
+h2. Agent Injector Setup
+
+{code:language=bash|title=Install Vault Agent Injector}
+# Install Vault Helm chart with injector
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm install vault hashicorp/vault \
+    --set "injector.enabled=true" \
+    --set "server.enabled=false"
+{code}
+
+h2. Pod Annotations
+
+{code:language=yaml|title=Pod with Vault Agent Annotations}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+  annotations:
+    # Enable Vault Agent injection
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "webapp"
+    
+    # Inject database secret
+    vault.hashicorp.com/agent-inject-secret-database: "secret/webapp/database"
+    vault.hashicorp.com/agent-inject-template-database: |
+      {{- with secret "secret/webapp/database" -}}
+      export DB_HOST="{{ .Data.data.host }}"
+      export DB_USER="{{ .Data.data.username }}"
+      export DB_PASS="{{ .Data.data.password }}"
+      {{- end }}
+      
+    # Inject API keys
+    vault.hashicorp.com/agent-inject-secret-apikeys: "secret/webapp/apikeys"
+    vault.hashicorp.com/agent-inject-template-apikeys: |
+      {{- with secret "secret/webapp/apikeys" -}}
+      export API_KEY="{{ .Data.data.api_key }}"
+      export SECRET_KEY="{{ .Data.data.secret_key }}"
+      {{- end }}
+spec:
+  serviceAccountName: webapp
+  containers:
+  - name: webapp
+    image: alpine:latest
+    command: ["/bin/sh"]
+    args:
+    - -c
+    - |
+      # Source injected secrets
+      source /vault/secrets/database
+      source /vault/secrets/apikeys
+      
+      # Start application
+      echo "Starting webapp with secrets loaded"
+      sleep 3600
+{code}
+
+h1. Monitoring and Troubleshooting
+
+h2. Check Resource Status
+
+{code:language=bash|title=Monitor Vault Resources}
+# Check VaultConnection status
+kubectl get vaultconnection -A
+kubectl describe vaultconnection default -n default
+
+# Check VaultAuth status
+kubectl get vaultauth -A
+kubectl describe vaultauth webapp-auth -n default
+
+# Check VaultStaticSecret status
+kubectl get vaultstaticsecret -A
+kubectl describe vaultstaticsecret webapp-config -n default
+
+# Check generated Kubernetes secrets
+kubectl get secrets -A | grep vault
+kubectl describe secret webapp-config -n default
+{code}
+
+h2. Operator Logs
+
+{code:language=bash|title=Check Operator Logs}
+# View operator logs
+kubectl logs -f deployment/vault-secrets-operator-controller-manager \
+    -n vault-secrets-operator-system
+
+# Check for specific errors
+kubectl logs deployment/vault-secrets-operator-controller-manager \
+    -n vault-secrets-operator-system | grep -i error
+{code}
+
+h2. Common Issues
+
+{expand:title=Authentication Failures}
+*Symptoms:* VaultAuth resources show authentication errors
+
+*Solutions:*
+1. Verify service account exists: {{kubectl get sa webapp -n default}}
+2. Check Kubernetes role configuration: {{vault read auth/kubernetes/role/webapp}}
+3. Verify token reviewer JWT: {{kubectl create token vault-auth -n vault-secrets-operator-system}}
+4. Test authentication manually: {{vault write auth/kubernetes/login role=webapp jwt=<token>}}
+{expand}
+
+{expand:title=Secret Sync Failures}
+*Symptoms:* Kubernetes secrets not created or outdated
+
+*Solutions:*
+1. Check VaultStaticSecret status: {{kubectl describe vaultstaticsecret webapp-config}}
+2. Verify Vault secret exists: {{vault kv get secret/webapp/config}}
+3. Check operator permissions: {{kubectl get clusterrole vault-secrets-operator}}
+4. Review operator logs for specific errors
+{expand}
+
+h1. Best Practices
+
+{panel:title=Security & Operations|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+*Security:*
+• Use separate service accounts per application
+• Implement least privilege with Vault policies
+• Enable audit logging for both Vault and Kubernetes
+• Use network policies for namespace isolation
+
+*Operations:*
+• Monitor secret sync status and failures
+• Set appropriate refresh intervals for secrets
+• Implement backup for Vault configuration
+• Use GitOps for managing Vault resources
+{panel}
+
+h1. Related Documentation
+
+{panel:title=Related Pages|borderStyle=solid|borderColor=#3498db|titleBGColor=#ebf3fd}
+• [Keystore Management|03-keystore-management-guide] - Managing KV secrets
+• [Database Dynamic Keys|05-database-dynamic-key-rotation] - Dynamic database credentials
+• [Advanced Kubernetes Patterns|07-advanced-kubernetes-patterns] - Advanced integration patterns
+• [Multi-Team Onboarding|08-multi-team-onboarding] - Team namespace isolation
+{panel}
+
+{info:title=Next Steps}
+After basic integration:
+1. Implement advanced patterns like GitOps workflows
+2. Set up monitoring and alerting for secret operations
+3. Configure backup and disaster recovery
+4. Explore multi-cluster and cross-namespace patterns
+{info}

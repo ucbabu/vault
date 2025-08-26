@@ -1,0 +1,637 @@
+{info:title=Azure Dynamic Key Rotation with HashiCorp Vault}
+This guide covers implementing dynamic Azure credential generation using HashiCorp Vault's Azure secrets engine to eliminate static service principal secrets and enhance security through short-lived credentials.
+{info}
+
+{panel:title=Page Information|borderStyle=dashed|borderColor=#ccc|titleBGColor=#d9ead3|bgColor=#f9f9f9}
+*Target Audience:* Cloud Engineers, Azure Administrators, DevOps Engineers
+*Estimated Reading Time:* 12-15 minutes
+*Prerequisites:* Azure subscription with admin access, HashiCorp Vault cluster
+*Related Pages:* [Keystore Management Guide|03-keystore-management-guide], [Database Dynamic Key Rotation|05-database-dynamic-key-rotation]
+{panel}
+
+h1. Table of Contents
+
+{toc:printable=true|style=square|maxLevel=3|indent=10px|minLevel=1|exclude=Table of Contents}
+
+h1. Overview
+
+Azure dynamic key rotation with HashiCorp Vault generates short-lived Azure credentials on-demand, eliminating static service principal secrets and reducing security risks through automated credential lifecycle management.
+
+h2. Key Benefits
+
+{panel:title=Dynamic Credential Benefits|borderStyle=solid|borderColor=#0078d4|titleBGColor=#106ebe|titleColor=#ffffff}
+• *Enhanced Security:* Short-lived credentials (minutes to hours)
+• *Zero Static Storage:* No credentials stored in applications  
+• *Automatic Rotation:* Credentials expire and rotate automatically
+• *Complete Audit Trail:* Full visibility into credential usage
+• *Principle of Least Privilege:* Granular Azure role assignments
+• *Compliance Ready:* Automated governance and access controls
+{panel}
+
+h1. Prerequisites
+
+h2. Azure Requirements
+
+{warning:title=Required Azure Permissions}
+Service principal for Vault requires these specific permissions:
+{warning}
+
+{code:language=json|title=Required Azure Permissions|borderStyle=solid}
+{
+  "permissions": [
+    "Microsoft.Authorization/roleAssignments/*",
+    "Microsoft.Authorization/roleDefinitions/read", 
+    "Microsoft.Resources/subscriptions/resourceGroups/read"
+  ]
+}
+{code}
+
+{tip:title=Azure Setup Checklist}
+✓ Azure subscription with admin access
+✓ Service principal created for Vault integration
+✓ Required permissions assigned to service principal
+✓ Resource groups identified for role scope assignments
+✓ Network connectivity from Vault to Azure APIs verified
+{tip}
+
+h2. Vault Requirements
+
+{panel:title=Vault Prerequisites|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+• Vault cluster with administrative access
+• Network connectivity to Azure Management APIs
+• Appropriate Vault policies for Azure secrets engine
+• Monitoring and audit logging configured
+{panel}
+
+h1. Azure Secrets Engine Setup
+
+h2. 1. Enable and Configure Azure Engine
+
+{code:language=bash|title=Azure Secrets Engine Configuration|borderStyle=solid}
+# Enable Azure secrets engine
+vault secrets enable azure
+
+# Configure Azure connection with service principal
+vault write azure/config \
+    subscription_id="12345678-1234-1234-1234-123456789012" \
+    tenant_id="87654321-4321-4321-4321-210987654321" \
+    client_id="vault-service-principal-id" \
+    client_secret="vault-sp-secret" \
+    environment="AzurePublicCloud"
+
+# Verify configuration (client_secret will be redacted)
+vault read azure/config
+{code}
+
+{note:title=Environment Options}
+Supported Azure environments:
+• {{AzurePublicCloud}} (default)
+• {{AzureUSGovernmentCloud}}
+• {{AzureChinaCloud}}
+• {{AzureGermanCloud}}
+{note}
+
+h2. 2. Create Azure Role Definitions
+
+{expand:title=Read-Only Monitoring Role}
+{code:language=bash|title=Read-Only Role Configuration|borderStyle=solid}
+vault write azure/roles/readonly \
+    azure_roles='[
+        {
+            "role_name": "Reader",
+            "scope": "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/monitoring-rg"
+        }
+    ]' \
+    ttl="1h" \
+    max_ttl="24h"
+{code}
+{expand}
+
+{expand:title=Storage Administrator Role}
+{code:language=bash|title=Storage Admin Role Configuration|borderStyle=solid}
+vault write azure/roles/storage-admin \
+    azure_roles='[
+        {
+            "role_name": "Storage Account Contributor",
+            "scope": "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/storage-rg"
+        },
+        {
+            "role_name": "Storage Blob Data Contributor", 
+            "scope": "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/storage-rg"
+        }
+    ]' \
+    ttl="30m" \
+    max_ttl="2h"
+{code}
+{expand}
+
+{expand:title=Application Deployment Role}
+{code:language=bash|title=App Deployer Role Configuration|borderStyle=solid}
+vault write azure/roles/app-deployer \
+    azure_roles='[
+        {
+            "role_name": "Contributor",
+            "scope": "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/app-rg"
+        }
+    ]' \
+    ttl="4h" \
+    max_ttl="12h"
+{code}
+{expand}
+
+h2. 3. Role Configuration Best Practices
+
+{panel:title=Role Design Guidelines|borderStyle=solid|borderColor=#e67e22|titleBGColor=#f39c12|titleColor=#ffffff}
+*Scope Granularity:* Use resource group or resource-level scopes instead of subscription-wide
+*TTL Strategy:* 
+• Development: 1-4 hours
+• CI/CD: 15-30 minutes  
+• Production: 30 minutes - 2 hours
+• Monitoring: 1-24 hours
+
+*Role Separation:* Create specific roles for different use cases rather than broad permissions
+{panel}
+
+h1. Dynamic Credential Management
+
+h2. 1. Generate Azure Credentials
+
+{code:language=bash|title=Credential Generation Examples|borderStyle=solid}
+# Generate credentials for specific role
+vault read azure/creds/readonly
+
+# Example output:
+# Key                Value
+# ---                -----
+# lease_id           azure/creds/readonly/abc123def456
+# lease_duration     3600
+# lease_renewable    true
+# client_id          a1b2c3d4-e5f6-7890-1234-567890abcdef
+# client_secret      generated-client-secret-value
+
+# Store credentials in variables for automation
+AZURE_CREDS=$(vault read -format=json azure/creds/readonly)
+CLIENT_ID=$(echo $AZURE_CREDS | jq -r '.data.client_id')
+CLIENT_SECRET=$(echo $AZURE_CREDS | jq -r '.data.client_secret')
+LEASE_ID=$(echo $AZURE_CREDS | jq -r '.lease_id')
+
+echo "Generated Azure credentials with lease: $LEASE_ID"
+{code}
+
+h2. 2. Lease Management Operations
+
+{code:language=bash|title=Lease Management Commands|borderStyle=solid}
+# Renew lease with default increment
+vault lease renew $LEASE_ID
+
+# Renew lease with specific duration (1 hour)
+vault lease renew -increment=3600 $LEASE_ID
+
+# Revoke credentials before expiration
+vault lease revoke $LEASE_ID
+
+# Revoke all leases for a specific role
+vault lease revoke -prefix azure/creds/readonly
+
+# List active leases for monitoring
+vault list sys/leases/lookup/azure/creds/readonly
+
+# Get lease information
+vault lease lookup $LEASE_ID
+{code}
+
+{warning:title=Lease Management Best Practices}
+• Always implement proper lease renewal logic in applications
+• Monitor lease expiration times and renew proactively
+• Implement graceful fallback when credential generation fails
+• Revoke credentials when no longer needed to minimize exposure
+{warning}
+
+h1. Application Integration
+
+h2. 1. Python Integration Example
+
+{expand:title=Complete Python Implementation}
+{code:language=python|title=Azure Vault Client Python Implementation|borderStyle=solid}
+import hvac
+import json
+import time
+from azure.identity import ClientSecretCredential
+from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.storage import StorageManagementClient
+
+class AzureVaultClient:
+    def __init__(self, vault_url, vault_token, subscription_id, tenant_id):
+        """Initialize Azure Vault client with connection details"""
+        self.vault_client = hvac.Client(url=vault_url, token=vault_token)
+        self.subscription_id = subscription_id
+        self.tenant_id = tenant_id
+        self.current_credentials = {}
+        
+    def get_azure_credentials(self, role_name, force_refresh=False):
+        """Get fresh Azure credentials from Vault with caching"""
+        # Check if we have cached credentials that are still valid
+        if not force_refresh and role_name in self.current_credentials:
+            lease_info = self.vault_client.sys.lookup_lease(
+                self.current_credentials[role_name]['lease_id']
+            )
+            if lease_info['data']['ttl'] > 300:  # 5 minutes buffer
+                return self.current_credentials[role_name]
+        
+        # Get fresh credentials from Vault
+        response = self.vault_client.read(f'azure/creds/{role_name}')
+        if not response:
+            raise Exception(f"Failed to get credentials for role: {role_name}")
+            
+        credentials = {
+            'client_id': response['data']['client_id'],
+            'client_secret': response['data']['client_secret'],
+            'lease_id': response['lease_id'],
+            'lease_duration': response['lease_duration']
+        }
+        
+        # Cache credentials
+        self.current_credentials[role_name] = credentials
+        return credentials
+    
+    def get_azure_credential(self, role_name):
+        """Get Azure ClientSecretCredential object"""
+        creds = self.get_azure_credentials(role_name)
+        return ClientSecretCredential(
+            tenant_id=self.tenant_id,
+            client_id=creds['client_id'],
+            client_secret=creds['client_secret']
+        )
+    
+    def get_resource_client(self, role_name):
+        """Get authenticated Azure Resource Management client"""
+        credential = self.get_azure_credential(role_name)
+        return ResourceManagementClient(credential, self.subscription_id)
+    
+    def get_storage_client(self, role_name):
+        """Get authenticated Azure Storage Management client"""
+        credential = self.get_azure_credential(role_name)
+        return StorageManagementClient(credential, self.subscription_id)
+    
+    def revoke_credentials(self, role_name):
+        """Revoke cached credentials"""
+        if role_name in self.current_credentials:
+            lease_id = self.current_credentials[role_name]['lease_id']
+            self.vault_client.sys.revoke_lease(lease_id)
+            del self.current_credentials[role_name]
+
+# Usage example
+def main():
+    vault_client = AzureVaultClient(
+        vault_url="https://vault.example.com:8200",
+        vault_token="hvs.CAESIJ...",
+        subscription_id="12345678-1234-1234-1234-123456789012",
+        tenant_id="87654321-4321-4321-4321-210987654321"
+    )
+    
+    try:
+        # Get authenticated Azure client
+        azure_client = vault_client.get_resource_client('readonly')
+        
+        # List resource groups
+        print("Resource Groups:")
+        for rg in azure_client.resource_groups.list():
+            print(f"  - {rg.name} ({rg.location})")
+            
+        # Get storage client for storage operations
+        storage_client = vault_client.get_storage_client('storage-admin')
+        
+        # List storage accounts
+        print("\nStorage Accounts:")
+        for account in storage_client.storage_accounts.list():
+            print(f"  - {account.name}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        # Clean up credentials
+        vault_client.revoke_credentials('readonly')
+        vault_client.revoke_credentials('storage-admin')
+
+if __name__ == "__main__":
+    main()
+{code}
+{expand}
+
+h2. 2. Shell Script Integration
+
+{code:language=bash|title=Bash Integration Script|borderStyle=solid}
+#!/bin/bash
+# azure-deploy.sh - Azure deployment with Vault dynamic credentials
+
+set -euo pipefail
+
+# Configuration
+VAULT_ADDR="${VAULT_ADDR:-https://vault.example.com:8200}"
+AZURE_ROLE="${AZURE_ROLE:-app-deployer}"
+SUBSCRIPTION_ID="12345678-1234-1234-1234-123456789012"
+TENANT_ID="87654321-4321-4321-4321-210987654321"
+
+# Function to get Azure credentials from Vault
+get_azure_credentials() {
+    local role_name="$1"
+    local creds_json
+    
+    echo "Getting Azure credentials for role: $role_name" >&2
+    creds_json=$(vault read -format=json "azure/creds/$role_name")
+    
+    if [[ -z "$creds_json" ]]; then
+        echo "Failed to get credentials from Vault" >&2
+        exit 1
+    fi
+    
+    echo "$creds_json"
+}
+
+# Function to authenticate with Azure CLI
+azure_login() {
+    local creds_json="$1"
+    local client_id client_secret lease_id
+    
+    client_id=$(echo "$creds_json" | jq -r '.data.client_id')
+    client_secret=$(echo "$creds_json" | jq -r '.data.client_secret')
+    lease_id=$(echo "$creds_json" | jq -r '.lease_id')
+    
+    echo "Authenticating with Azure CLI..." >&2
+    az login --service-principal \
+        --username "$client_id" \
+        --password "$client_secret" \
+        --tenant "$TENANT_ID" \
+        --output none
+    
+    az account set --subscription "$SUBSCRIPTION_ID"
+    
+    # Return lease ID for cleanup
+    echo "$lease_id"
+}
+
+# Function to cleanup credentials
+cleanup_credentials() {
+    local lease_id="$1"
+    
+    if [[ -n "$lease_id" ]]; then
+        echo "Revoking Vault lease: $lease_id" >&2
+        vault lease revoke "$lease_id" || true
+    fi
+    
+    echo "Logging out of Azure CLI..." >&2
+    az logout || true
+}
+
+# Main deployment function
+deploy_application() {
+    local resource_group="$1"
+    local template_file="$2"
+    local parameters_file="$3"
+    
+    echo "Deploying application to resource group: $resource_group"
+    
+    az deployment group create \
+        --resource-group "$resource_group" \
+        --template-file "$template_file" \
+        --parameters "@$parameters_file" \
+        --output table
+}
+
+# Main script execution
+main() {
+    local creds_json lease_id
+    
+    # Get credentials from Vault
+    creds_json=$(get_azure_credentials "$AZURE_ROLE")
+    
+    # Authenticate with Azure
+    lease_id=$(azure_login "$creds_json")
+    
+    # Set up cleanup trap
+    trap "cleanup_credentials '$lease_id'" EXIT
+    
+    # Perform deployment operations
+    deploy_application "my-app-rg" "azuredeploy.json" "parameters.json"
+    
+    echo "Deployment completed successfully!"
+}
+
+# Execute main function
+main "$@"
+{code}
+
+h2. 3. Terraform Integration
+
+{expand:title=Terraform Provider Configuration}
+{code:language=hcl|title=Terraform Azure Provider with Vault|borderStyle=solid}
+# Configure Vault provider
+terraform {
+  required_providers {
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 3.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+}
+
+# Configure Vault provider
+provider "vault" {
+  address = var.vault_address
+  token   = var.vault_token
+}
+
+# Get Azure credentials from Vault
+data "vault_generic_secret" "azure_creds" {
+  path = "azure/creds/${var.azure_role}"
+}
+
+# Configure Azure provider with dynamic credentials
+provider "azurerm" {
+  features {}
+  
+  subscription_id = var.subscription_id
+  tenant_id       = var.tenant_id
+  client_id       = data.vault_generic_secret.azure_creds.data["client_id"]
+  client_secret   = data.vault_generic_secret.azure_creds.data["client_secret"]
+}
+
+# Example resource using dynamic credentials
+resource "azurerm_resource_group" "example" {
+  name     = "terraform-example-rg"
+  location = "East US"
+  
+  tags = {
+    environment = "development"
+    managed_by  = "terraform"
+    vault_lease = data.vault_generic_secret.azure_creds.lease_id
+  }
+}
+
+# Output lease information for cleanup
+output "vault_lease_id" {
+  value     = data.vault_generic_secret.azure_creds.lease_id
+  sensitive = true
+}
+{code}
+{expand}
+
+h1. Monitoring and Best Practices
+
+h2. 1. Monitoring Azure Dynamic Credentials
+
+{panel:title=Key Monitoring Metrics|borderStyle=solid|borderColor=#e74c3c|titleBGColor=#c0392b|titleColor=#ffffff}
+*Credential Usage:*
+• Number of credentials generated per role
+• Credential generation failure rates
+• Average credential lifetime and usage patterns
+
+*Lease Management:*
+• Lease renewal success/failure rates
+• Expired vs. revoked credential ratios
+• Time between generation and first use
+
+*Security Events:*
+• Failed authentication attempts with dynamic credentials
+• Unusual access patterns or times
+• Credentials used from unexpected locations
+{panel}
+
+h2. 2. Performance Optimization
+
+{tip:title=Performance Best Practices}
+*Credential Caching:* Implement client-side caching with proper TTL handling
+*Parallel Operations:* Use connection pooling for multiple Azure API calls
+*Renewal Strategy:* Renew credentials before 80% of TTL expires
+*Error Handling:* Implement exponential backoff for credential generation failures
+{tip}
+
+h2. 3. Security Best Practices
+
+{warning:title=Security Considerations}
+*Principle of Least Privilege:* Grant minimal required Azure permissions
+*Network Security:* Restrict Vault and Azure API access to authorized networks
+*Audit Logging:* Enable comprehensive logging for credential lifecycle events
+*Regular Review:* Periodically review role definitions and access patterns
+{warning}
+
+h2. 4. Troubleshooting Common Issues
+
+{expand:title=Credential Generation Failures}
+*Symptoms:* {{vault read azure/creds/role-name}} returns errors
+
+*Common Causes:*
+• Service principal permissions insufficient
+• Azure subscription or tenant ID incorrect
+• Network connectivity issues to Azure APIs
+• Vault Azure secrets engine misconfiguration
+
+*Solutions:*
+1. Verify service principal permissions in Azure portal
+2. Test Azure API connectivity from Vault server
+3. Check Vault logs for detailed error messages
+4. Validate Azure secrets engine configuration
+{expand}
+
+{expand:title=Authentication Failures}
+*Symptoms:* Azure CLI or SDK authentication fails with generated credentials
+
+*Common Causes:*
+• Credentials expired before use
+• Role assignments not yet propagated in Azure
+• Incorrect tenant or subscription ID
+• Network restrictions blocking Azure API access
+
+*Solutions:*
+1. Check credential TTL and generation time
+2. Wait for Azure role propagation (up to 5 minutes)
+3. Verify tenant and subscription configuration
+4. Test network connectivity to Azure endpoints
+{expand}
+
+{expand:title=Lease Management Issues}
+*Symptoms:* Lease renewal failures or unexpected revocations
+
+*Common Causes:*
+• Network connectivity issues during renewal
+• Vault token expired or insufficient permissions
+• Lease ID incorrect or already revoked
+
+*Solutions:*
+1. Implement retry logic for lease operations
+2. Monitor Vault token TTL and renewal
+3. Validate lease ID format and existence
+4. Check Vault audit logs for lease events
+{expand}
+
+h1. Integration Examples
+
+h2. CI/CD Pipeline Integration
+
+{code:language=yaml|title=Azure DevOps Pipeline Example|borderStyle=solid}
+# azure-pipelines.yml
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  VAULT_ADDR: 'https://vault.example.com:8200'
+  AZURE_ROLE: 'app-deployer'
+
+steps:
+- task: AzureCLI@2
+  displayName: 'Get Vault Credentials and Deploy'
+  inputs:
+    azureSubscription: 'vault-dynamic-connection'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      # Authenticate with Vault using CI/CD token
+      export VAULT_TOKEN="$(VAULT_CI_TOKEN)"
+      
+      # Get dynamic Azure credentials
+      CREDS=$(vault read -format=json azure/creds/$AZURE_ROLE)
+      CLIENT_ID=$(echo $CREDS | jq -r '.data.client_id')
+      CLIENT_SECRET=$(echo $CREDS | jq -r '.data.client_secret')
+      LEASE_ID=$(echo $CREDS | jq -r '.lease_id')
+      
+      # Authenticate with Azure
+      az login --service-principal \
+        --username $CLIENT_ID \
+        --password $CLIENT_SECRET \
+        --tenant $(AZURE_TENANT_ID)
+      
+      # Deploy resources
+      az deployment group create \
+        --resource-group myapp-rg \
+        --template-file infrastructure/main.bicep \
+        --parameters @infrastructure/parameters.json
+      
+      # Cleanup
+      vault lease revoke $LEASE_ID
+{code}
+
+h1. Related Documentation
+
+{panel:title=Related Pages|borderStyle=solid|borderColor=#3498db|titleBGColor=#ebf3fd}
+• [Keystore Management Guide|03-keystore-management-guide] - Static secret management
+• [Database Dynamic Key Rotation|05-database-dynamic-key-rotation] - Database credential automation  
+• [Kubernetes Vault Integration|06-kubernetes-vault-integration] - Container workload integration
+• [Multi-Team Onboarding|08-multi-team-onboarding] - Team namespace isolation
+• [Vault Cloud Setup Guide|02-vault-cloud-setup-guide] - Initial Vault configuration
+{panel}
+
+{info:title=Next Steps}
+After implementing Azure dynamic key rotation:
+1. Set up similar patterns for AWS and GCP if using multi-cloud
+2. Integrate with Kubernetes workloads for container-based applications
+3. Implement automated testing for credential generation workflows
+4. Configure monitoring and alerting for credential lifecycle events
+5. Establish backup procedures for Vault Azure secrets engine configuration
+{info}

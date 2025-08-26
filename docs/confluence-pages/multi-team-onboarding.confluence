@@ -1,0 +1,523 @@
+{info:title=Multi-Team Onboarding with HCP Vault Namespaces}
+Comprehensive guide for onboarding multiple teams onto HCP Vault using namespaces with Kubernetes integration and complete isolation.
+{info}
+
+{panel:title=Page Information|borderStyle=dashed|borderColor=#ccc|titleBGColor=#d9ead3|bgColor=#f9f9f9}
+*Target Audience:* Platform Engineers, Team Leads, Vault Administrators
+*Prerequisites:* HCP Vault Plus/Enterprise, Kubernetes cluster admin access
+*Related Pages:* [Kubernetes Integration|06-kubernetes-vault-integration], [Advanced Patterns|07-advanced-kubernetes-patterns]
+{panel}
+
+h1. Overview
+
+Multi-team onboarding with HCP Vault namespaces provides secure, scalable secret management for organizations with multiple development teams through complete isolation and automated workflows.
+
+{panel:title=Multi-Tenancy Benefits|borderStyle=solid|borderColor=#8e44ad|titleBGColor=#9b59b6|titleColor=#ffffff}
+• Complete team isolation with Vault namespaces
+• Kubernetes namespace mapping for container workloads
+• Automated onboarding with consistent configurations
+• Granular access control per team and environment
+• Centralized governance with distributed management
+{panel}
+
+h1. Architecture
+
+h2. Namespace Hierarchy
+
+{noformat}
+vault/
+├── admin/                     # Root admin namespace
+├── platform/                  # Platform engineering team
+│   ├── shared/               # Shared platform resources
+│   ├── monitoring/           # Monitoring and observability
+│   └── infrastructure/       # Infrastructure secrets
+├── team-alpha/               # Development team Alpha
+│   ├── dev/                  # Development environment
+│   ├── staging/              # Staging environment
+│   └── prod/                 # Production environment
+├── team-beta/                # Development team Beta
+├── security/                 # Security team namespace
+└── data-engineering/         # Data engineering team
+{noformat}
+
+h2. Kubernetes Mapping
+
+{panel:title=Namespace Mapping Strategy|borderStyle=solid|borderColor=#3498db|titleBGColor=#2980b9|titleColor=#ffffff}
+*Vault Namespace* → *Kubernetes Namespaces*
+{{team-alpha}} → {{team-alpha-dev}}, {{team-alpha-staging}}, {{team-alpha-prod}}
+{{team-beta}} → {{team-beta-dev}}, {{team-beta-staging}}, {{team-beta-prod}}
+{{platform}} → {{platform-monitoring}}, {{platform-infrastructure}}
+{panel}
+
+h1. Prerequisites
+
+h2. HCP Vault Requirements
+
+{warning:title=HCP Vault Tier Requirements}
+*Vault Namespaces* are only available in HCP Vault *Plus* and *Enterprise* tiers. Standard tier does not support namespaces.
+{warning}
+
+{code:language=bash|title=Verify Namespace Support}
+# Check if namespaces are supported
+vault namespace list
+
+# Verify admin permissions
+vault auth list
+vault policy list
+{code}
+
+h2. Kubernetes Requirements
+
+{code:language=bash|title=Kubernetes Prerequisites}
+# Verify cluster admin access
+kubectl auth can-i '*' '*' --all-namespaces
+
+# Check Vault Secrets Operator
+kubectl get deployment vault-secrets-operator-controller-manager \
+    -n vault-secrets-operator-system
+{code}
+
+h1. Automated Team Onboarding
+
+h2. Onboarding Script Usage
+
+{code:language=bash|title=Team Onboarding Script}
+# Basic team onboarding
+./scripts/team-onboarding.sh team-alpha
+
+# Team with custom environments
+./scripts/team-onboarding.sh -e "dev,test,staging,prod" team-beta
+
+# Team with cloud engines enabled
+./scripts/team-onboarding.sh -c -d team-gamma
+
+# Team with OIDC authentication
+./scripts/team-onboarding.sh \
+    --oidc \
+    --oidc-url "https://auth.company.com/.well-known/openid_configuration" \
+    --oidc-client-id "vault-client" \
+    --oidc-secret "client-secret" \
+    team-delta
+
+# Dry run to preview changes
+./scripts/team-onboarding.sh --dry-run team-epsilon
+{code}
+
+h2. Script Features
+
+{panel:title=Automation Features|borderStyle=solid|borderColor=#27ae60|titleBGColor=#2ecc71|titleColor=#ffffff}
+• *Complete Automation:* End-to-end team setup
+• *Flexible Configuration:* Custom environments and engines
+• *OIDC Integration:* Enterprise SSO authentication
+• *Kubernetes Integration:* Automatic namespace and resource creation
+• *Documentation Generation:* Automatic team-specific documentation
+• *Dry Run Mode:* Preview changes before execution
+{panel}
+
+h1. Manual Team Setup
+
+h2. 1. Create Vault Namespace
+
+{code:language=bash|title=Vault Namespace Creation}
+# Set admin context
+export VAULT_NAMESPACE="admin"
+
+# Create team namespace
+vault namespace create team-alpha
+
+# Verify creation
+vault namespace list
+
+# Switch to team namespace
+export VAULT_NAMESPACE="team-alpha"
+{code}
+
+h2. 2. Enable Secrets Engines
+
+{code:language=bash|title=Enable Team Secrets Engines}
+# Enable KV v2 secrets engine
+vault secrets enable -path=secrets kv-v2
+
+# Enable database secrets engine
+vault secrets enable database
+
+# Enable cloud provider engines (optional)
+vault secrets enable -path=azure azure
+vault secrets enable -path=aws aws
+vault secrets enable -path=gcp gcp
+
+# Verify enabled engines
+vault secrets list
+{code}
+
+h2. 3. Create Team Policies
+
+{expand:title=Development Environment Policy}
+{code:language=hcl|title=team-alpha-dev-policy.hcl}
+# Full access to dev environment secrets
+path "secrets/data/dev/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "secrets/metadata/dev/*" {
+  capabilities = ["read", "list", "delete"]
+}
+
+# Read shared configuration
+path "secrets/data/shared/*" {
+  capabilities = ["read"]
+}
+
+# Generate dev database credentials
+path "database/creds/dev-*" {
+  capabilities = ["read"]
+}
+
+# Generate dev cloud credentials
+path "azure/creds/dev-*" {
+  capabilities = ["read"]
+}
+{code}
+{expand}
+
+{expand:title=Production Environment Policy}
+{code:language=hcl|title=team-alpha-prod-policy.hcl}
+# Read-only access to production secrets
+path "secrets/data/prod/*" {
+  capabilities = ["read"]
+}
+
+# Generate production database credentials (read-only)
+path "database/creds/prod-readonly" {
+  capabilities = ["read"]
+}
+
+# Generate production cloud credentials (limited roles)
+path "azure/creds/prod-readonly" {
+  capabilities = ["read"]
+}
+{code}
+{expand}
+
+h2. 4. Setup Kubernetes Authentication
+
+{code:language=bash|title=Kubernetes Auth Configuration}
+# Enable Kubernetes auth method for team
+vault auth enable -path=team-alpha-k8s kubernetes
+
+# Configure Kubernetes auth
+vault write auth/team-alpha-k8s/config \
+    token_reviewer_jwt="$(kubectl create token vault-auth -n vault-secrets-operator-system --duration=8760h)" \
+    kubernetes_host="$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.server}')" \
+    kubernetes_ca_cert="$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.certificate-authority-data}' | base64 -d)" \
+    issuer="https://kubernetes.default.svc.cluster.local"
+
+# Create Kubernetes roles for environments
+vault write auth/team-alpha-k8s/role/dev \
+    bound_service_account_names="*" \
+    bound_service_account_namespaces="team-alpha-dev" \
+    policies="team-alpha-dev" \
+    ttl=1h \
+    max_ttl=4h
+
+vault write auth/team-alpha-k8s/role/prod \
+    bound_service_account_names="*" \
+    bound_service_account_namespaces="team-alpha-prod" \
+    policies="team-alpha-prod" \
+    ttl=15m \
+    max_ttl=1h
+{code}
+
+h1. Kubernetes Integration
+
+h2. Create Team Namespaces
+
+{code:language=bash|title=Kubernetes Namespace Setup}
+# Create Kubernetes namespaces for team
+kubectl create namespace team-alpha-dev
+kubectl create namespace team-alpha-staging
+kubectl create namespace team-alpha-prod
+
+# Apply labels for identification
+kubectl label namespace team-alpha-dev vault-namespace=team-alpha
+kubectl label namespace team-alpha-dev environment=dev
+kubectl label namespace team-alpha-dev team=team-alpha
+
+kubectl label namespace team-alpha-prod vault-namespace=team-alpha
+kubectl label namespace team-alpha-prod environment=prod
+kubectl label namespace team-alpha-prod team=team-alpha
+{code}
+
+h2. Deploy Vault Resources
+
+{code:language=yaml|title=VaultConnection for Team}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: team-alpha-vault
+  namespace: team-alpha-dev
+spec:
+  address: "https://your-vault-cluster.vault.hashicorp.cloud:8200"
+  vaultNamespace: "team-alpha"
+  skipTLSVerify: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: team-alpha-dev-auth
+  namespace: team-alpha-dev
+spec:
+  vaultConnectionRef: team-alpha-vault
+  method: kubernetes
+  mount: team-alpha-k8s
+  kubernetes:
+    role: dev
+    serviceAccount: default
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: app-config
+  namespace: team-alpha-dev
+spec:
+  type: kv-v2
+  mount: secrets
+  path: dev/app/config
+  destination:
+    name: app-config
+    create: true
+  vaultAuthRef: team-alpha-dev-auth
+{code}
+
+h1. Team Access Management
+
+h2. OIDC Authentication
+
+{code:language=bash|title=OIDC Setup for Teams}
+# Enable OIDC auth for team
+vault auth enable -path=team-alpha-oidc oidc -namespace=team-alpha
+
+# Configure OIDC
+vault write auth/team-alpha-oidc/config \
+    oidc_discovery_url="https://auth.company.com/.well-known/openid_configuration" \
+    oidc_client_id="team-alpha-vault-client" \
+    oidc_client_secret="client-secret" \
+    default_role="team-alpha-member"
+
+# Create OIDC roles
+vault write auth/team-alpha-oidc/role/team-alpha-admin \
+    bound_audiences="team-alpha-vault-client" \
+    user_claim="sub" \
+    policies="team-alpha-admin"
+
+vault write auth/team-alpha-oidc/role/team-alpha-developer \
+    bound_audiences="team-alpha-vault-client" \
+    user_claim="sub" \
+    policies="team-alpha-dev"
+{code}
+
+h2. User Management
+
+{code:language=bash|title=Team User Management}
+# Create team admin policy
+cat > team-alpha-admin.hcl << 'EOF'
+# Full access to team namespace
+path "secrets/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+# Manage team policies
+path "sys/policies/acl/team-alpha-*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+# View team audit logs
+path "sys/audit" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+vault policy write team-alpha-admin team-alpha-admin.hcl -namespace=team-alpha
+{code}
+
+h1. Cross-Team Patterns
+
+h2. Shared Resources
+
+{code:language=bash|title=Shared Platform Resources}
+# Create shared namespace for platform resources
+vault namespace create shared
+
+# Switch to shared namespace
+export VAULT_NAMESPACE="shared"
+
+# Enable KV engine for shared resources
+vault secrets enable -path=secrets kv-v2
+
+# Create shared readonly policy
+cat > shared-readonly.hcl << 'EOF'
+path "secrets/data/common/*" {
+  capabilities = ["read"]
+}
+
+path "secrets/data/platform/*" {
+  capabilities = ["read"]
+}
+EOF
+
+vault policy write shared-readonly shared-readonly.hcl
+
+# Grant access from team namespaces
+vault write auth/team-alpha-k8s/role/shared \
+    bound_service_account_namespaces="team-alpha-dev,team-alpha-prod" \
+    policies="shared-readonly" \
+    -namespace=shared
+{code}
+
+h2. Cross-Namespace Secret Access
+
+{code:language=yaml|title=Cross-Namespace VaultStaticSecret}
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: shared-vault
+  namespace: team-alpha-dev
+spec:
+  address: "https://your-vault-cluster.vault.hashicorp.cloud:8200"
+  vaultNamespace: "shared"
+  skipTLSVerify: false
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: shared-auth
+  namespace: team-alpha-dev
+spec:
+  vaultConnectionRef: shared-vault
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: shared
+    serviceAccount: default
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: platform-config
+  namespace: team-alpha-dev
+spec:
+  type: kv-v2
+  mount: secrets
+  path: platform/monitoring
+  destination:
+    name: platform-config
+    create: true
+  vaultAuthRef: shared-auth
+{code}
+
+h1. Governance and Monitoring
+
+h2. Namespace Audit Configuration
+
+{code:language=bash|title=Per-Namespace Audit Logging}
+# Enable audit logging per namespace
+vault audit enable -path=team-alpha-audit file \
+    file_path=/vault/audit/team-alpha.log \
+    -namespace=team-alpha
+
+# Configure audit log rotation
+vault write sys/config/auditing/request-headers \
+    X-Forwarded-For=true \
+    X-Real-IP=true \
+    -namespace=team-alpha
+{code}
+
+h2. Cross-Namespace Monitoring
+
+{code:language=bash|title=Platform Admin Monitoring}
+# Policy for platform administrators (admin namespace)
+cat > platform-admin.hcl << 'EOF'
+# Manage all namespaces
+path "sys/namespaces/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+# Read audit logs from all namespaces
+path "+/sys/audit" {
+  capabilities = ["read", "list"]
+}
+
+# Monitor namespace health
+path "+/sys/health" {
+  capabilities = ["read"]
+}
+
+# View all namespace policies
+path "+/sys/policies/*" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+vault policy write platform-admin platform-admin.hcl -namespace=admin
+{code}
+
+h1. Best Practices
+
+{panel:title=Multi-Team Best Practices|borderStyle=solid|borderColor=#e67e22|titleBGColor=#f39c12|titleColor=#ffffff}
+*Namespace Design:*
+• Use consistent naming: {{team-<name>}}
+• Plan for future team reorganization
+• Separate production from non-production clearly
+
+*Access Control:*
+• Implement principle of least privilege
+• Use time-bound tokens with appropriate TTLs
+• Regular access reviews per team
+
+*Operations:*
+• Automate team onboarding processes
+• Monitor namespace usage and performance
+• Implement backup procedures per namespace
+{panel}
+
+h1. Troubleshooting
+
+h2. Common Issues
+
+{expand:title=Namespace Access Problems}
+*Symptoms:* Team members cannot access their namespace
+
+*Solutions:*
+1. Verify namespace exists: {{vault namespace list}}
+2. Check namespace context: {{echo $VAULT_NAMESPACE}}
+3. Verify user authentication and policies
+4. Test namespace access: {{vault auth -namespace=team-alpha}}
+{expand}
+
+{expand:title=Cross-Namespace Secret Access}
+*Symptoms:* Cannot access shared secrets from team namespace
+
+*Solutions:*
+1. Verify shared namespace authentication
+2. Check cross-namespace policies
+3. Validate VaultConnection configuration
+4. Test shared secret access manually
+{expand}
+
+h1. Related Documentation
+
+{panel:title=Related Pages|borderStyle=solid|borderColor=#3498db|titleBGColor=#ebf3fd}
+• [Kubernetes Integration|06-kubernetes-vault-integration] - Basic Kubernetes setup
+• [Advanced Patterns|07-advanced-kubernetes-patterns] - Enterprise patterns
+• [Keystore Management|03-keystore-management-guide] - Secret organization
+• [Database Dynamic Keys|05-database-dynamic-key-rotation] - Database integration
+{panel}
+
+{info:title=Next Steps}
+After team onboarding:
+1. Implement monitoring and alerting per team
+2. Set up automated backup procedures
+3. Configure cross-team collaboration patterns
+4. Establish governance and compliance procedures
+5. Plan for team scaling and reorganization
+{info}

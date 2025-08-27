@@ -45,6 +45,7 @@ vault/
 ├── scripts/                           # Automation scripts
 │   ├── vault-initial-setup.sh
 │   ├── hcp-org-sso-setup.sh
+│   ├── azure-ad-hcp-sso-setup.sh
 │   ├── keystore-setup.sh
 │   ├── azure-setup.sh
 │   ├── database-setup.sh
@@ -78,6 +79,12 @@ vault/
   - OIDC and SAML identity provider integration
   - Centralized authentication and user management
   - Role-based access control and group mappings
+
+- **[Azure AD HCP SSO Setup](docs/setup-guides/04-azure-ad-hcp-sso-setup.md)**
+  - Azure AD/Entra ID specific SSO configuration
+  - Step-by-step Azure AD application setup
+  - Automated scripts for Azure AD integration
+  - Group mappings and conditional access
 
 ### 3. User Guides
 - **[Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)**
@@ -740,7 +747,26 @@ HCP Organization SSO provides centralized authentication for all HashiCorp Cloud
 
 ### Quick Setup Examples
 
-#### OIDC with Azure AD
+#### Azure AD/Entra ID (Recommended)
+```bash
+# Complete Azure AD and HCP SSO setup (automated)
+./scripts/azure-ad-hcp-sso-setup.sh \
+    --hcp-org-id "org-abc123" \
+    --azure-tenant-id "your-tenant-id"
+
+# Manual Azure AD OIDC configuration
+./scripts/hcp-org-sso-setup.sh oidc \
+    --name "Azure AD" \
+    --org-id "org-abc123" \
+    --oidc-issuer "https://login.microsoftonline.com/tenant-id/v2.0" \
+    --oidc-client-id "your-client-id" \
+    --oidc-secret "your-client-secret" \
+    --group-mapping "HCP-Vault-Admins:Admin:*" \
+    --group-mapping "HCP-Vault-Developers:Contributor:vault-dev,vault-staging" \
+    --jit-provisioning
+```
+
+#### Generic OIDC with Other Providers
 ```bash
 # Configure HCP Organization SSO with Azure AD
 ./scripts/hcp-org-sso-setup.sh oidc \

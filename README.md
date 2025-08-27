@@ -44,6 +44,7 @@ vault/
 │   └── terraform.tfvars.example
 ├── scripts/                           # Automation scripts
 │   ├── vault-initial-setup.sh
+│   ├── hcp-org-sso-setup.sh
 │   ├── keystore-setup.sh
 │   ├── azure-setup.sh
 │   ├── database-setup.sh
@@ -71,6 +72,12 @@ vault/
   - Complete installation and configuration
   - Authentication methods setup
   - Network configuration and security hardening
+
+- **[HCP Organization SSO Setup](docs/setup-guides/03-hcp-organization-sso-setup.md)**
+  - Single Sign-On configuration for HCP Organization
+  - OIDC and SAML identity provider integration
+  - Centralized authentication and user management
+  - Role-based access control and group mappings
 
 ### 3. User Guides
 - **[Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)**
@@ -188,12 +195,13 @@ vault/
 
 ### Basic Setup
 1. **Review the EPIC document**: Start with [EPIC-Vault-Cloud-Onboarding.md](EPIC-Vault-Cloud-Onboarding.md)
-2. **Follow setup guide**: Use [Vault Cloud Setup Guide](docs/setup-guides/02-vault-cloud-setup-guide.md)
-3. **Configure keystore**: Implement using [Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)
-4. **Enable dynamic rotation**: Follow Azure and database guides as needed
-5. **Setup Kubernetes integration**: Configure using [Kubernetes Vault Integration](docs/user-guides/06-kubernetes-vault-integration.md)
-6. **Implement advanced patterns**: Deploy using [Advanced Kubernetes Patterns](docs/user-guides/07-advanced-kubernetes-patterns.md)
-7. **Onboard multiple teams**: Use [Multi-Team Onboarding Guide](docs/user-guides/08-multi-team-onboarding.md) for namespace isolation
+2. **Configure HCP Organization SSO**: Set up centralized authentication with [HCP Organization SSO Setup](docs/setup-guides/03-hcp-organization-sso-setup.md)
+3. **Follow setup guide**: Use [Vault Cloud Setup Guide](docs/setup-guides/02-vault-cloud-setup-guide.md)
+4. **Configure keystore**: Implement using [Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)
+5. **Enable dynamic rotation**: Follow Azure and database guides as needed
+6. **Setup Kubernetes integration**: Configure using [Kubernetes Vault Integration](docs/user-guides/06-kubernetes-vault-integration.md)
+7. **Implement advanced patterns**: Deploy using [Advanced Kubernetes Patterns](docs/user-guides/07-advanced-kubernetes-patterns.md)
+8. **Onboard multiple teams**: Use [Multi-Team Onboarding Guide](docs/user-guides/08-multi-team-onboarding.md) for namespace isolation
 
 ### Multi-Team Onboarding
 ```bash
@@ -720,6 +728,70 @@ vault policy write namespace-admin namespace-admin.hcl -namespace=admin
    - Token usage monitoring
    - Failed authentication alerts
    - Policy violation notifications
+
+## 🔐 HCP Organization SSO Setup
+
+### Overview
+HCP Organization SSO provides centralized authentication for all HashiCorp Cloud Platform services, including Vault Cloud. This enables seamless integration with your existing identity provider and establishes organization-wide access control.
+
+### Supported Identity Providers
+- **OIDC**: Azure AD, Google Workspace, Okta, Auth0, Keycloak
+- **SAML**: Azure AD, Okta, PingIdentity, OneLogin, ADFS
+
+### Quick Setup Examples
+
+#### OIDC with Azure AD
+```bash
+# Configure HCP Organization SSO with Azure AD
+./scripts/hcp-org-sso-setup.sh oidc \
+    --name "Azure AD" \
+    --org-id "org-abc123" \
+    --oidc-issuer "https://login.microsoftonline.com/tenant-id/v2.0" \
+    --oidc-client-id "your-client-id" \
+    --oidc-secret "your-client-secret" \
+    --group-mapping "HCP-Vault-Admins:Admin:*" \
+    --group-mapping "HCP-Vault-Developers:Contributor:vault-dev,vault-staging" \
+    --jit-provisioning
+```
+
+#### SAML with Okta
+```bash
+# Configure HCP Organization SSO with Okta SAML
+./scripts/hcp-org-sso-setup.sh saml \
+    --name "Okta SAML" \
+    --org-id "org-abc123" \
+    --saml-sso-url "https://company.okta.com/app/sso/saml" \
+    --saml-entity-id "http://www.okta.com/entity-id" \
+    --saml-cert "/path/to/okta-cert.pem" \
+    --enforce-sso
+```
+
+#### Using Configuration File
+```bash
+# Use YAML configuration file for complex setups
+./scripts/hcp-org-sso-setup.sh oidc --config hcp-sso-config.yaml --dry-run
+```
+
+### Benefits
+- **Centralized Authentication**: Single point of authentication for all HCP services
+- **Enhanced Security**: Leverage existing identity provider security features
+- **Automated User Management**: Just-In-Time (JIT) provisioning and group synchronization
+- **Role-Based Access**: Map identity provider groups to HCP roles and permissions
+- **Audit Trail**: Comprehensive audit logging for authentication events
+
+### Integration with Vault Team Onboarding
+Once HCP Organization SSO is configured, team onboarding becomes more streamlined:
+
+```bash
+# Team onboarding with SSO-integrated users
+./scripts/team-onboarding.sh team-alpha \
+    --oidc \
+    --oidc-url "https://login.microsoftonline.com/tenant-id/v2.0" \
+    --oidc-client-id "vault-team-client" \
+    --oidc-secret "team-client-secret"
+```
+
+For detailed configuration instructions, see the [HCP Organization SSO Setup Guide](docs/setup-guides/03-hcp-organization-sso-setup.md).
 
 ## 🔧 Implementation Examples
 

@@ -1,0 +1,161 @@
+# HCP Organization SSO Configuration Example
+# Copy this file and modify values according to your setup
+
+# Organization Configuration
+organization:
+  id: "org-your-organization-id"
+
+# Provider Configuration
+provider:
+  name: "Azure AD"
+  type: "oidc"  # or "saml"
+
+# OIDC Configuration (for OIDC provider type)
+oidc:
+  issuer_url: "https://login.microsoftonline.com/your-tenant-id/v2.0"
+  client_id: "your-azure-application-client-id"
+  client_secret: "your-azure-application-client-secret"
+  scopes: "openid profile email groups"
+
+# SAML Configuration (for SAML provider type)
+# Uncomment and configure if using SAML instead of OIDC
+# saml:
+#   sso_url: "https://login.microsoftonline.com/your-tenant-id/saml2"
+#   entity_id: "https://sts.windows.net/your-tenant-id/"
+#   certificate_file: "/path/to/saml-certificate.pem"
+
+# Group Mappings
+# Map identity provider groups to HCP roles and projects
+group_mappings:
+  # Platform Engineering Team - Full admin access
+  - identity_provider_group: "HCP-Platform-Admins"
+    hcp_role: "Admin"
+    projects: "*"  # All projects
+  
+  # Vault Administrators - Admin access to Vault projects
+  - identity_provider_group: "HCP-Vault-Admins"
+    hcp_role: "Admin"
+    projects: "vault-production,vault-staging"
+  
+  # Vault Operators - Contributor access to production, admin to staging
+  - identity_provider_group: "HCP-Vault-Operators"
+    hcp_role: "Contributor"
+    projects: "vault-production"
+  
+  - identity_provider_group: "HCP-Vault-Operators"
+    hcp_role: "Admin"
+    projects: "vault-staging"
+  
+  # Vault Developers - Contributor access to development and staging
+  - identity_provider_group: "HCP-Vault-Developers"
+    hcp_role: "Contributor"
+    projects: "vault-development,vault-staging"
+  
+  # Security Team - Viewer access to all projects for audit purposes
+  - identity_provider_group: "Security-Team"
+    hcp_role: "Viewer"
+    projects: "*"
+  
+  # QA Engineers - Viewer access to staging and development
+  - identity_provider_group: "QA-Engineers"
+    hcp_role: "Viewer"
+    projects: "vault-development,vault-staging"
+
+# SSO Configuration Options
+jit_provisioning: true    # Enable Just-In-Time user provisioning
+enforce_sso: false        # Set to true to require SSO for all users (disable local auth)
+
+# Advanced Configuration
+advanced:
+  # Token lifetime settings
+  token_ttl: "8h"           # Default token lifetime
+  token_max_ttl: "24h"      # Maximum token lifetime
+  
+  # Session settings
+  session_timeout: "30m"    # Idle session timeout
+  
+  # MFA requirements
+  require_mfa: true         # Require multi-factor authentication
+  
+  # Conditional access
+  conditional_access:
+    - condition: "high_risk_sign_in"
+      action: "require_mfa"
+    - condition: "unfamiliar_location"
+      action: "require_approval"
+
+# Audit and Compliance
+audit:
+  # Log authentication events
+  log_authentication: true
+  
+  # Log authorization decisions
+  log_authorization: true
+  
+  # Export audit logs to external system
+  export_logs:
+    enabled: true
+    destination: "azure-log-analytics"  # or "splunk", "datadog", etc.
+
+# Notification Settings
+notifications:
+  # Notify on SSO configuration changes
+  config_changes:
+    enabled: true
+    recipients:
+      - "platform-team@company.com"
+      - "security-team@company.com"
+  
+  # Notify on authentication failures
+  auth_failures:
+    enabled: true
+    threshold: 5  # failures within 5 minutes
+    recipients:
+      - "security-team@company.com"
+
+# Backup and Recovery
+backup:
+  # Automatically backup configuration before changes
+  auto_backup: true
+  
+  # Retention period for backups
+  retention_days: 90
+  
+  # Backup storage location
+  storage_location: "/backups/hcp-sso"
+
+# Development and Testing
+development:
+  # Test users for validation
+  test_users:
+    - email: "test-admin@company.com"
+      groups: ["HCP-Platform-Admins"]
+    - email: "test-developer@company.com"
+      groups: ["HCP-Vault-Developers"]
+  
+  # Test groups
+  test_groups:
+    - "HCP-Test-Users"
+  
+  # Allow local authentication in development
+  allow_local_auth: true
+
+# Environment-specific overrides
+environments:
+  development:
+    enforce_sso: false
+    token_ttl: "12h"
+    require_mfa: false
+  
+  staging:
+    enforce_sso: false
+    token_ttl: "8h"
+    require_mfa: true
+  
+  production:
+    enforce_sso: true
+    token_ttl: "4h"
+    require_mfa: true
+    conditional_access:
+      - condition: "high_risk_sign_in"
+        action: "deny"

@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.47"
+    }
   }
 }
 
@@ -24,6 +28,11 @@ provider "azurerm" {
   features {}
   subscription_id = var.azure_subscription_id
   tenant_id       = var.azure_tenant_id
+}
+
+# Configure Azure AD provider for SSO
+provider "azuread" {
+  tenant_id = var.azure_tenant_id
 }
 
 # Create HashiCorp Virtual Network (HVN)
@@ -159,3 +168,39 @@ data "azurerm_client_config" "current" {}
 
 # Data source to get available Azure locations
 data "azurerm_locations" "available" {}
+
+# Optional: Azure AD HCP Organization SSO Setup
+module "azure_ad_hcp_sso" {
+  count  = var.enable_hcp_sso ? 1 : 0
+  source = "./modules/azure-ad-hcp-sso"
+
+  # Basic configuration
+  application_name    = "${var.vault_cluster_id}-hcp-sso"
+  hcp_organization_id = var.hcp_organization_id
+  environment        = var.environment
+
+  # SSO settings
+  create_groups       = var.hcp_sso_create_groups
+  enable_group_claims = var.hcp_sso_enable_group_claims
+  jit_provisioning   = var.hcp_sso_jit_provisioning
+  enforce_sso        = var.hcp_sso_enforce_sso
+  auto_grant_consent = var.hcp_sso_auto_grant_consent
+
+  # Additional groups (if specified)
+  additional_groups = var.hcp_sso_additional_groups
+
+  # Test users for development/staging
+  create_test_users = var.environment != "prod" ? var.hcp_sso_create_test_users : false
+  test_users       = var.hcp_sso_test_users
+
+  # Token lifetime policies
+  token_lifetime_policies = var.hcp_sso_token_lifetime_policies
+
+  # Tags
+  tags = merge(var.additional_tags, {
+    Environment = var.environment
+    Project     = "vault-cloud-onboarding"
+    Owner       = var.owner
+    Component   = "hcp-sso"
+  })
+}

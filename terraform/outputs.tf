@@ -114,3 +114,45 @@ output "deployment_environment" {
     vnet_peering   = var.enable_vnet_peering
   }
 }
+
+# HCP Organization SSO Outputs
+output "hcp_sso_enabled" {
+  description = "Whether HCP SSO is enabled"
+  value       = var.enable_hcp_sso
+}
+
+output "hcp_sso_application_id" {
+  description = "Azure AD Application ID for HCP SSO"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].application_id : null
+}
+
+output "hcp_sso_tenant_id" {
+  description = "Azure AD Tenant ID"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].tenant_id : null
+}
+
+output "hcp_sso_issuer_url" {
+  description = "OIDC Issuer URL for HCP SSO"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].oidc_issuer_url : null
+}
+
+output "hcp_sso_test_url" {
+  description = "URL to test HCP SSO login"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].sso_test_url : null
+}
+
+output "hcp_sso_setup_command" {
+  description = "Command to complete HCP SSO configuration"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].hcp_sso_setup_command : null
+  sensitive   = true
+}
+
+output "hcp_sso_created_groups" {
+  description = "Azure AD groups created for HCP access"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].created_groups : {}
+}
+
+output "hcp_sso_azure_portal_urls" {
+  description = "Azure Portal URLs for managing HCP SSO"
+  value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].azure_portal_urls : {}
+}

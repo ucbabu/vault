@@ -798,6 +798,35 @@ HCP Organization SSO provides centralized authentication for all HashiCorp Cloud
 ./scripts/hcp-org-sso-setup.sh oidc --config hcp-sso-config.yaml --dry-run
 ```
 
+#### Terraform Infrastructure as Code
+```hcl
+# Enable Azure AD HCP SSO in your Terraform configuration
+module "azure_ad_hcp_sso" {
+  source = "./modules/azure-ad-hcp-sso"
+
+  application_name    = "HashiCorp Cloud Platform"
+  hcp_organization_id = "your-hcp-org-id"
+  environment        = "prod"
+  
+  create_groups       = true
+  enable_group_claims = true
+  jit_provisioning   = true
+
+  tags = {
+    Environment = "production"
+    ManagedBy   = "terraform"
+  }
+}
+
+# Then apply the configuration
+terraform init
+terraform plan
+terraform apply
+
+# Use the output to configure HCP SSO
+terraform output -raw hcp_sso_setup_command | bash
+```
+
 ### Benefits
 - **Centralized Authentication**: Single point of authentication for all HCP services
 - **Enhanced Security**: Leverage existing identity provider security features

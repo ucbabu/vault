@@ -13,6 +13,12 @@ variable "hcp_client_secret" {
   sensitive   = true
 }
 
+variable "hcp_organization_id" {
+  description = "HCP Organization ID for SSO configuration"
+  type        = string
+  default     = ""
+}
+
 # Azure Configuration
 variable "azure_subscription_id" {
   description = "Azure subscription ID"
@@ -153,4 +159,88 @@ variable "additional_tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)
   default     = {}
+}
+
+# HCP Organization SSO Configuration
+variable "enable_hcp_sso" {
+  description = "Enable Azure AD HCP Organization SSO setup"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_sso_create_groups" {
+  description = "Create Azure AD security groups for HCP access"
+  type        = bool
+  default     = true
+}
+
+variable "hcp_sso_enable_group_claims" {
+  description = "Enable group claims in Azure AD ID tokens"
+  type        = bool
+  default     = true
+}
+
+variable "hcp_sso_jit_provisioning" {
+  description = "Enable Just-In-Time user provisioning in HCP"
+  type        = bool
+  default     = true
+}
+
+variable "hcp_sso_enforce_sso" {
+  description = "Enforce SSO for all HCP organization users"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_sso_auto_grant_consent" {
+  description = "Automatically grant admin consent for Azure AD application"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_sso_create_test_users" {
+  description = "Create test users for SSO validation (non-production only)"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_sso_additional_groups" {
+  description = "Additional Azure AD groups beyond defaults"
+  type = map(object({
+    role     = string
+    projects = list(string)
+  }))
+  default = {}
+}
+
+variable "hcp_sso_test_users" {
+  description = "Test users for SSO validation"
+  type = map(object({
+    display_name = string
+    groups       = list(string)
+  }))
+  default = {
+    "sso-test-admin" = {
+      display_name = "SSO Test Administrator"
+      groups       = ["HCP-Platform-Admins"]
+    }
+    "sso-test-user" = {
+      display_name = "SSO Test User"
+      groups       = ["HCP-Vault-Developers"]
+    }
+  }
+}
+
+variable "hcp_sso_token_lifetime_policies" {
+  description = "Token lifetime policies for HCP SSO"
+  type = object({
+    access_token_lifetime  = string
+    id_token_lifetime      = string
+    refresh_token_lifetime = string
+  })
+  default = {
+    access_token_lifetime  = "PT1H"   # 1 hour
+    id_token_lifetime      = "PT1H"   # 1 hour
+    refresh_token_lifetime = "P14D"   # 14 days
+  }
 }

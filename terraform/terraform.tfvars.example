@@ -3,8 +3,9 @@
 
 # HCP Authentication
 # Get these from HCP Console -> Account Settings -> Service Principals
-hcp_client_id     = "your-hcp-client-id"
-hcp_client_secret = "your-hcp-client-secret"
+hcp_client_id       = "your-hcp-client-id"
+hcp_client_secret   = "your-hcp-client-secret"
+hcp_organization_id = "your-hcp-organization-id"
 
 # Azure Configuration
 azure_subscription_id = "12345678-1234-1234-1234-123456789012"
@@ -51,3 +52,28 @@ additional_tags = {
   CostCenter = "infrastructure"
   Compliance = "required"
 }
+
+# HCP Organization SSO Configuration (optional)
+# Enable Azure AD SSO integration
+enable_hcp_sso                = false
+hcp_sso_create_groups         = true
+hcp_sso_enable_group_claims   = true
+hcp_sso_jit_provisioning     = true
+hcp_sso_enforce_sso           = false
+hcp_sso_auto_grant_consent    = false  # Set to true for development
+hcp_sso_create_test_users     = false  # Only for non-production
+
+# Custom groups (optional)
+# hcp_sso_additional_groups = {
+#   "HCP-Data-Engineers" = {
+#     role     = "Contributor"
+#     projects = ["vault-data", "vault-analytics"]
+#   }
+# }
+
+# Token lifetime policies (optional)
+# hcp_sso_token_lifetime_policies = {
+#   access_token_lifetime  = "PT1H"   # 1 hour
+#   id_token_lifetime      = "PT1H"   # 1 hour
+#   refresh_token_lifetime = "P14D"   # 14 days
+# }

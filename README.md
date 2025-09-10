@@ -134,6 +134,13 @@ vault/
   - Access management and governance patterns
   - Cross-team secret sharing strategies
 
+- **[HCP Terraform Vault Integration Overview](docs/user-guides/09-hcp-terraform-vault-integration-overview.md)**
+  - Complete overview of HCP Terraform integration with Vault
+  - Dynamic Azure credentials for infrastructure deployment
+  - Security benefits and architecture explanation
+  - Quick start guide and usage examples
+  - Best practices and troubleshooting guide
+
 ## 🎫 Epic Stories
 
 ### Story 1: Set up HashiCorp Vault Cloud Instance (8 points)

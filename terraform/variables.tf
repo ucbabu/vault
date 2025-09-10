@@ -244,3 +244,108 @@ variable "hcp_sso_token_lifetime_policies" {
     refresh_token_lifetime = "P14D"   # 14 days
   }
 }
+
+# HCP Terraform Configuration
+variable "enable_hcp_terraform" {
+  description = "Enable HCP Terraform workspace creation and Vault integration"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_terraform_token" {
+  description = "HCP Terraform API token for workspace management"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "hcp_terraform_organization" {
+  description = "HCP Terraform organization name"
+  type        = string
+  default     = ""
+}
+
+variable "hcp_terraform_workspace_name" {
+  description = "Name for the HCP Terraform workspace"
+  type        = string
+  default     = "azure-infrastructure"
+}
+
+variable "hcp_terraform_auto_apply" {
+  description = "Enable auto-apply for HCP Terraform workspace"
+  type        = bool
+  default     = false
+}
+
+variable "hcp_terraform_version" {
+  description = "Terraform version for HCP Terraform workspace"
+  type        = string
+  default     = "~> 1.6"
+}
+
+variable "hcp_terraform_working_directory" {
+  description = "Working directory for HCP Terraform workspace"
+  type        = string
+  default     = ""
+}
+
+variable "hcp_terraform_file_triggers_enabled" {
+  description = "Enable file triggers for HCP Terraform workspace"
+  type        = bool
+  default     = true
+}
+
+variable "hcp_terraform_vcs_repo" {
+  description = "VCS repository configuration for HCP Terraform workspace"
+  type = object({
+    identifier     = string
+    branch         = string
+    oauth_token_id = string
+  })
+  default = null
+}
+
+variable "hcp_terraform_additional_tags" {
+  description = "Additional tags for HCP Terraform workspace"
+  type        = list(string)
+  default     = []
+}
+
+variable "hcp_terraform_notification_webhook" {
+  description = "Webhook URL for HCP Terraform workspace notifications"
+  type        = string
+  default     = ""
+}
+
+# Vault Azure Role Configuration for HCP Terraform
+variable "vault_azure_role_name" {
+  description = "Name of the Azure role in Vault for HCP Terraform dynamic credentials"
+  type        = string
+  default     = "hcp-terraform"
+}
+
+variable "vault_azure_role_scopes" {
+  description = "Azure role scopes for HCP Terraform service principal"
+  type = list(object({
+    role_name = string
+    scope     = string
+  }))
+  default = [
+    {
+      role_name = "Contributor"
+      scope     = "/subscriptions"
+    }
+  ]
+}
+
+variable "vault_azure_role_ttl" {
+  description = "TTL for HCP Terraform Azure credentials"
+  type        = string
+  default     = "1h"
+}
+
+variable "vault_azure_role_max_ttl" {
+  description = "Maximum TTL for HCP Terraform Azure credentials"
+  type        = string
+  default     = "4h"
+}

@@ -156,3 +156,125 @@ output "hcp_sso_azure_portal_urls" {
   description = "Azure Portal URLs for managing HCP SSO"
   value       = var.enable_hcp_sso ? module.azure_ad_hcp_sso[0].azure_portal_urls : {}
 }
+
+# HCP Terraform Integration Outputs
+output "hcp_terraform_enabled" {
+  description = "Whether HCP Terraform integration is enabled"
+  value       = var.enable_hcp_terraform
+}
+
+output "hcp_terraform_workspace_id" {
+  description = "ID of the created HCP Terraform workspace"
+  value       = var.enable_hcp_terraform ? tfe_workspace.azure_infrastructure[0].id : null
+}
+
+output "hcp_terraform_workspace_name" {
+  description = "Name of the created HCP Terraform workspace"
+  value       = var.enable_hcp_terraform ? tfe_workspace.azure_infrastructure[0].name : null
+}
+
+output "hcp_terraform_workspace_url" {
+  description = "URL to access the HCP Terraform workspace"
+  value       = var.enable_hcp_terraform ? "https://app.terraform.io/app/${var.hcp_terraform_organization}/workspaces/${tfe_workspace.azure_infrastructure[0].name}" : null
+}
+
+output "vault_jwt_auth_path" {
+  description = "Vault JWT authentication path for HCP Terraform"
+  value       = var.enable_hcp_terraform ? vault_jwt_auth_backend.hcp_terraform[0].path : null
+}
+
+output "vault_jwt_auth_role" {
+  description = "Vault JWT authentication role for HCP Terraform"
+  value       = var.enable_hcp_terraform ? vault_jwt_auth_backend_role.hcp_terraform[0].role_name : null
+}
+
+output "vault_azure_role_name" {
+  description = "Vault Azure role name for HCP Terraform dynamic credentials"
+  value       = var.enable_hcp_terraform ? var.vault_azure_role_name : null
+}
+
+output "vault_policy_name" {
+  description = "Vault policy name for HCP Terraform access"
+  value       = var.enable_hcp_terraform ? vault_policy.hcp_terraform_azure[0].name : null
+}
+
+# HCP Terraform Configuration Summary
+output "hcp_terraform_configuration" {
+  description = "Complete HCP Terraform configuration summary"
+  value = var.enable_hcp_terraform ? {
+    organization       = var.hcp_terraform_organization
+    workspace_name     = tfe_workspace.azure_infrastructure[0].name
+    workspace_id       = tfe_workspace.azure_infrastructure[0].id
+    workspace_url      = "https://app.terraform.io/app/${var.hcp_terraform_organization}/workspaces/${tfe_workspace.azure_infrastructure[0].name}"
+    vault_auth_path    = vault_jwt_auth_backend.hcp_terraform[0].path
+    vault_auth_role    = vault_jwt_auth_backend_role.hcp_terraform[0].role_name
+    vault_policy       = vault_policy.hcp_terraform_azure[0].name
+    azure_role_name    = var.vault_azure_role_name
+    auto_apply_enabled = var.hcp_terraform_auto_apply
+    terraform_version  = var.hcp_terraform_version
+  } : null
+}
+
+# Dynamic Credentials Setup Instructions
+output "hcp_terraform_setup_instructions" {
+  description = "Instructions for using dynamic Azure credentials in HCP Terraform"
+  value = var.enable_hcp_terraform ? {
+    vault_configuration = {
+      vault_addr      = hcp_vault_cluster.main.vault_public_endpoint_url
+      vault_namespace = hcp_vault_cluster.main.namespace
+      auth_path       = vault_jwt_auth_backend.hcp_terraform[0].path
+      auth_role       = vault_jwt_auth_backend_role.hcp_terraform[0].role_name
+      azure_role      = var.vault_azure_role_name
+    }
+    terraform_configuration = {
+      provider_config = <<-EOT
+      terraform {
+        required_providers {
+          vault = {
+            source  = "hashicorp/vault"
+            version = "~> 3.0"
+          }
+          azurerm = {
+            source  = "hashicorp/azurerm"
+            version = "~> 3.0"
+          }
+        }
+      }
+      
+      # Configure Vault provider
+      provider "vault" {
+        address   = "${hcp_vault_cluster.main.vault_public_endpoint_url}"
+        namespace = "${hcp_vault_cluster.main.namespace}"
+        
+        auth_login_jwt {
+          role = "${vault_jwt_auth_backend_role.hcp_terraform[0].role_name}"
+          mount = "${vault_jwt_auth_backend.hcp_terraform[0].path}"
+        }
+      }
+      
+      # Get dynamic Azure credentials from Vault
+      data "vault_generic_secret" "azure_creds" {
+        path = "azure/creds/${var.vault_azure_role_name}"
+      }
+      
+      # Configure Azure provider with dynamic credentials
+      provider "azurerm" {
+        features {}
+        
+        subscription_id = "${var.azure_subscription_id}"
+        tenant_id       = "${var.azure_tenant_id}"
+        client_id       = data.vault_generic_secret.azure_creds.data["client_id"]
+        client_secret   = data.vault_generic_secret.azure_creds.data["client_secret"]
+      }
+      EOT
+    }
+    workspace_variables = {
+      VAULT_ADDR      = hcp_vault_cluster.main.vault_public_endpoint_url
+      VAULT_NAMESPACE = hcp_vault_cluster.main.namespace
+      ARM_SUBSCRIPTION_ID = var.azure_subscription_id
+      ARM_TENANT_ID      = var.azure_tenant_id
+      VAULT_AZURE_ROLE   = var.vault_azure_role_name
+    }
+  } : null
+  sensitive = true
+}

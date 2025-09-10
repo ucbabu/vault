@@ -1,0 +1,16 @@
+# Example Terraform variables for Azure AD HCP SSO Setup
+# Copy this file to terraform.tfvars and update with your values
+
+# Azure Configuration
+azure_tenant_id = "12345678-1234-1234-1234-123456789012"
+
+# HCP Configuration
+hcp_client_id     = "your-hcp-client-id"
+hcp_client_secret = "your-hcp-client-secret"
+
+# HCP Organizations
+hcp_organization_id     = "your-production-org-id"
+hcp_organization_id_dev = "your-development-org-id"
+
+# Environment
+environment = "prod"

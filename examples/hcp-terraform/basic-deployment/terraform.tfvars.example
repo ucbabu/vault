@@ -1,0 +1,41 @@
+# Example Terraform variables for HCP Terraform workspace
+# Copy this file to terraform.tfvars and customize for your environment
+
+# Project Configuration
+project_name = "vaultdemo"
+environment  = "dev"
+team_name    = "platform-engineering"
+
+# Azure Configuration
+azure_region = "East US"
+
+# Storage Account Configuration
+storage_account_tier     = "Standard"
+storage_replication_type = "LRS"
+
+# Optional Components
+create_key_vault = false
+
+# Security Configuration
+enable_advanced_threat_protection = false
+enable_https_traffic_only        = true
+enable_private_endpoints         = false
+
+# Monitoring Configuration
+enable_monitoring = false
+
+# Additional Configuration
+additional_tags = {
+  CostCenter = "Engineering"
+  Project    = "Vault Integration Demo"
+}
+
+# Network Security (if enabling private endpoints)
+allowed_ip_ranges = [
+  # "203.0.113.0/24",  # Example: Office network
+  # "198.51.100.0/24"  # Example: VPN network
+]
+
+# Resource Naming (optional)
+resource_name_prefix = ""
+resource_name_suffix = ""

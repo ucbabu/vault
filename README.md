@@ -46,6 +46,7 @@ vault/
 │   ├── vault-initial-setup.sh
 │   ├── hcp-org-sso-setup.sh
 │   ├── azure-ad-hcp-sso-setup.sh
+│   ├── hcp-terraform-vault-setup.sh      # HCP Terraform integration setup
 │   ├── keystore-setup.sh
 │   ├── azure-setup.sh
 │   ├── database-setup.sh
@@ -56,6 +57,11 @@ vault/
 │   ├── kubernetes/
 │   │   ├── app-deployment.yaml
 │   │   └── multi-team-deployment.yaml
+│   ├── hcp-terraform/                # HCP Terraform integration examples
+│   │   ├── README.md
+│   │   ├── basic-deployment/
+│   │   ├── workspace-configuration/
+│   │   └── advanced-deployment/
 │   └── docker/
 └── README.md
 ```
@@ -85,6 +91,13 @@ vault/
   - Step-by-step Azure AD application setup
   - Automated scripts for Azure AD integration
   - Group mappings and conditional access
+
+- **[HCP Terraform Vault Integration](docs/setup-guides/09-hcp-terraform-vault-integration.md)**
+  - HCP Terraform workspace configuration with Vault dynamic credentials
+  - JWT authentication setup for HCP Terraform workspaces
+  - Azure dynamic credential integration for infrastructure deployment
+  - Automated setup scripts and comprehensive examples
+  - Security best practices and monitoring guidelines
 
 ### 3. User Guides
 - **[Keystore Management Guide](docs/user-guides/03-keystore-management-guide.md)**

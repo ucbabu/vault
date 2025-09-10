@@ -77,3 +77,45 @@ hcp_sso_create_test_users     = false  # Only for non-production
 #   id_token_lifetime      = "PT1H"   # 1 hour
 #   refresh_token_lifetime = "P14D"   # 14 days
 # }
+
+# HCP Terraform Integration (optional)
+# Enable HCP Terraform workspace creation and Vault integration
+enable_hcp_terraform = false
+
+# HCP Terraform Configuration
+# Get your token from: https://app.terraform.io/app/settings/tokens
+# hcp_terraform_token = "your-hcp-terraform-token"
+# hcp_terraform_organization = "your-org-name"
+
+# Workspace Configuration
+# hcp_terraform_workspace_name = "azure-infrastructure"
+# hcp_terraform_auto_apply = false
+# hcp_terraform_version = "~> 1.6"
+# hcp_terraform_working_directory = ""
+# hcp_terraform_file_triggers_enabled = true
+
+# VCS Repository Configuration (optional)
+# hcp_terraform_vcs_repo = {
+#   identifier     = "your-org/terraform-azure-infrastructure"
+#   branch         = "main"
+#   oauth_token_id = "your-vcs-oauth-token-id"
+# }
+
+# Workspace Tags
+# hcp_terraform_additional_tags = ["infrastructure", "azure"]
+
+# Notification Configuration (optional)
+# hcp_terraform_notification_webhook = "https://your-webhook-url.com/terraform"
+
+# Vault Azure Role Configuration for HCP Terraform
+# vault_azure_role_name = "hcp-terraform"
+# vault_azure_role_ttl = "1h"
+# vault_azure_role_max_ttl = "4h"
+
+# Azure Role Scopes for HCP Terraform (optional)
+# vault_azure_role_scopes = [
+#   {
+#     role_name = "Contributor"
+#     scope     = "/subscriptions"
+#   }
+# ]

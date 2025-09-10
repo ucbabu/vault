@@ -14,6 +14,14 @@ terraform {
       source  = "hashicorp/azuread"
       version = "~> 2.47"
     }
+    tfe = {
+      source  = "hashicorp/tfe"
+      version = "~> 0.50"
+    }
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -33,6 +41,18 @@ provider "azurerm" {
 # Configure Azure AD provider for SSO
 provider "azuread" {
   tenant_id = var.azure_tenant_id
+}
+
+# Configure HCP Terraform provider
+provider "tfe" {
+  token = var.hcp_terraform_token
+}
+
+# Configure Vault provider (conditionally configured)
+provider "vault" {
+  address   = hcp_vault_cluster.main.vault_public_endpoint_url
+  namespace = hcp_vault_cluster.main.namespace
+  token     = hcp_vault_cluster_admin_token.admin_token.token
 }
 
 # Create HashiCorp Virtual Network (HVN)
@@ -203,4 +223,195 @@ module "azure_ad_hcp_sso" {
     Owner       = var.owner
     Component   = "hcp-sso"
   })
+}
+
+# HCP Terraform Organization (Data source)
+data "tfe_organization" "main" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  name  = var.hcp_terraform_organization
+}
+
+# Create HCP Terraform workspace for Azure infrastructure
+resource "tfe_workspace" "azure_infrastructure" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  name              = var.hcp_terraform_workspace_name
+  organization      = var.hcp_terraform_organization
+  description       = "Azure infrastructure managed with dynamic Vault credentials"
+  auto_apply        = var.hcp_terraform_auto_apply
+  execution_mode    = "remote"
+  terraform_version = var.hcp_terraform_version
+  
+  # Enable Vault integration
+  global_remote_state = false
+  
+  # Working directory for modular configurations
+  working_directory = var.hcp_terraform_working_directory
+  
+  # File triggers (if specified)
+  dynamic "file_triggers_enabled" {
+    for_each = var.hcp_terraform_file_triggers_enabled ? [1] : []
+    content {
+      enabled = true
+    }
+  }
+  
+  # VCS repository configuration (if specified)
+  dynamic "vcs_repo" {
+    for_each = var.hcp_terraform_vcs_repo != null ? [var.hcp_terraform_vcs_repo] : []
+    content {
+      identifier     = vcs_repo.value.identifier
+      branch         = vcs_repo.value.branch
+      oauth_token_id = vcs_repo.value.oauth_token_id
+    }
+  }
+  
+  tag_names = concat([
+    "vault-integration",
+    "azure-dynamic-credentials",
+    var.environment
+  ], var.hcp_terraform_additional_tags)
+}
+
+# Configure Vault authentication for HCP Terraform workspace
+resource "vault_jwt_auth_backend" "hcp_terraform" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  description  = "JWT auth backend for HCP Terraform"
+  path         = "hcp_terraform"
+  oidc_discovery_url = "https://app.terraform.io"
+  bound_issuer = "https://app.terraform.io"
+}
+
+# Create Vault policy for HCP Terraform Azure credentials
+resource "vault_policy" "hcp_terraform_azure" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  name = "hcp-terraform-azure"
+  
+  policy = <<EOF
+# Allow HCP Terraform to read Azure dynamic credentials
+path "azure/creds/${var.vault_azure_role_name}" {
+  capabilities = ["read"]
+}
+
+# Allow reading Azure role configuration
+path "azure/roles/${var.vault_azure_role_name}" {
+  capabilities = ["read"]
+}
+
+# Allow listing Azure roles
+path "azure/roles" {
+  capabilities = ["list"]
+}
+
+# Allow reading Azure secrets engine configuration
+path "azure/config" {
+  capabilities = ["read"]
+}
+EOF
+}
+
+# Create Vault role for HCP Terraform authentication
+resource "vault_jwt_auth_backend_role" "hcp_terraform" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  backend         = vault_jwt_auth_backend.hcp_terraform[0].path
+  role_name       = "hcp-terraform-azure"
+  token_policies  = [vault_policy.hcp_terraform_azure[0].name]
+  
+  bound_audiences = ["vault.workload.identity"]
+  bound_claims = {
+    sub = "organization:${var.hcp_terraform_organization}:workspace:${var.hcp_terraform_workspace_name}:run_phase:*"
+  }
+  
+  user_claim      = "terraform_full_workspace"
+  role_type       = "jwt"
+  token_ttl       = 3600  # 1 hour
+  token_max_ttl   = 7200  # 2 hours
+}
+
+# Configure HCP Terraform workspace variables for Vault integration
+resource "tfe_variable" "vault_addr" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "VAULT_ADDR"
+  value        = hcp_vault_cluster.main.vault_public_endpoint_url
+  category     = "env"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Vault server URL for dynamic credentials"
+}
+
+resource "tfe_variable" "vault_namespace" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "VAULT_NAMESPACE"
+  value        = hcp_vault_cluster.main.namespace
+  category     = "env"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Vault namespace for dynamic credentials"
+}
+
+resource "tfe_variable" "azure_subscription_id" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "ARM_SUBSCRIPTION_ID"
+  value        = var.azure_subscription_id
+  category     = "env"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Azure subscription ID for Terraform"
+}
+
+resource "tfe_variable" "azure_tenant_id" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "ARM_TENANT_ID"
+  value        = var.azure_tenant_id
+  category     = "env"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Azure tenant ID for Terraform"
+}
+
+# Azure role name for dynamic credentials
+resource "tfe_variable" "vault_azure_role" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "VAULT_AZURE_ROLE"
+  value        = var.vault_azure_role_name
+  category     = "env"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Vault Azure role for dynamic credentials"
+}
+
+# Terraform variables for workspace configuration
+resource "tfe_variable" "environment" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "environment"
+  value        = var.environment
+  category     = "terraform"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Environment name for resource tagging"
+}
+
+resource "tfe_variable" "azure_region" {
+  count = var.enable_hcp_terraform ? 1 : 0
+  
+  key          = "azure_region"
+  value        = var.azure_region
+  category     = "terraform"
+  workspace_id = tfe_workspace.azure_infrastructure[0].id
+  description  = "Azure region for resource deployment"
+}
+
+# Optional: Configure notification for workspace runs
+resource "tfe_notification_configuration" "vault_integration" {
+  count = var.enable_hcp_terraform && var.hcp_terraform_notification_webhook != "" ? 1 : 0
+  
+  name             = "vault-credential-notification"
+  enabled          = true
+  destination_type = "generic"
+  triggers         = ["run:created", "run:planning", "run:needs_attention", "run:applying", "run:completed", "run:errored"]
+  url              = var.hcp_terraform_notification_webhook
+  workspace_id     = tfe_workspace.azure_infrastructure[0].id
 }

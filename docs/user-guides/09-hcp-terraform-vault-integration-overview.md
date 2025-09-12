@@ -23,6 +23,8 @@ This user guide provides a comprehensive overview of integrating HCP Terraform w
 
 The HCP Terraform Vault integration allows your Terraform Cloud workspaces to authenticate with HashiCorp Vault and retrieve dynamic Azure credentials on-demand. Instead of storing static Azure service principal credentials in your workspace, Vault generates fresh, short-lived credentials for each Terraform run.
 
+> **Important**: This integration is specifically designed for HCP Terraform Cloud and uses a different approach than the general HashiCorp validated pattern for CI/CD-Vault integration. For a detailed comparison of the differences, see [JWT Integration Comparison](../comparisons/jwt-integration-comparison.md).
+
 ### Key Components
 
 - **HCP Terraform**: HashiCorp's managed Terraform Cloud service

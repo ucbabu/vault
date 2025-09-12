@@ -26,6 +26,8 @@ This comprehensive guide walks you through setting up HCP Terraform to use Hashi
 - **Workspace Isolation**: Each workspace can use different Azure roles and permissions
 - **Least Privilege Access**: Fine-grained permissions based on workspace needs
 
+> **Note**: This integration is specifically designed for HCP Terraform Cloud and differs from the general HashiCorp validated pattern for Terraform-Vault integration. For a detailed comparison, see [JWT Integration Comparison](../comparisons/jwt-integration-comparison.md).
+
 ### How It Works
 
 ```mermaid

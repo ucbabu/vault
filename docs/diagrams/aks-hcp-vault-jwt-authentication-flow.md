@@ -2,6 +2,8 @@
 
 ## High-Level Architecture Diagram
 
+### Option 1: TokenReview Method (Current)
+
 ```mermaid
 graph TB
     subgraph "Azure Kubernetes Service (AKS)"
@@ -52,6 +54,100 @@ graph TB
     style App fill:#00d4aa,color:#000
     style TokenReview fill:#ff6b6b,color:#fff
 ```
+
+### Option 2: OIDC/JWT Method (Recommended)
+
+```mermaid
+graph TB
+    subgraph "Azure Kubernetes Service (AKS)"
+        subgraph "Application Namespace"
+            App2[Application Pod]
+            SA2[ServiceAccount with JWT]
+        end
+        
+        subgraph "vault-secrets-operator-system"
+            VSO2[Vault Secrets Operator]
+        end
+        
+        subgraph "OIDC Discovery"
+            OIDC[OIDC Discovery Endpoint]
+            JWKS[JWKS Endpoint]
+        end
+    end
+    
+    subgraph "HashiCorp Cloud Platform"
+        HCPVault2[HCP Vault]
+        subgraph "Vault Auth Methods"
+            JWTAuth[JWT Auth Method]
+            Policies2[Vault Policies]
+        end
+    end
+
+    %% Simplified Authentication Flow
+    App2 -->|1. Request Secret| VSO2
+    VSO2 -->|2. Use ServiceAccount JWT| SA2
+    VSO2 -->|3. Authenticate with JWT| HCPVault2
+    HCPVault2 -->|4. Get OIDC Configuration| OIDC
+    OIDC -->|5. Return Discovery Info| HCPVault2
+    HCPVault2 -->|6. Get Public Keys| JWKS
+    JWKS -->|7. Return Signing Keys| HCPVault2
+    HCPVault2 -->|8. Validate JWT Signature & Claims| JWTAuth
+    JWTAuth -->|9. Return Vault Token| VSO2
+    VSO2 -->|10. Fetch Secret Data| HCPVault2
+    HCPVault2 -->|11. Return Secret| VSO2
+    VSO2 -->|12. Create K8s Secret| App2
+
+    %% Configuration Dependencies
+    SA2 -.->|Bound to JWT Role| JWTAuth
+    Policies2 -.->|Authorize Access| HCPVault2
+
+    style HCPVault2 fill:#663399,color:#fff
+    style VSO2 fill:#326ce5,color:#fff
+    style App2 fill:#00d4aa,color:#000
+    style OIDC fill:#4CAF50,color:#fff
+    style JWKS fill:#4CAF50,color:#fff
+```
+
+## Comparison: TokenReview vs OIDC/JWT Authentication
+
+### TokenReview Method (Current Implementation)
+
+**Advantages:**
+- Well-established pattern
+- Supported by all Kubernetes versions
+- Direct integration with Kubernetes RBAC
+
+**Disadvantages:**
+- Requires network callback to Kubernetes API
+- Additional ServiceAccount (`vault-auth`) needed
+- Higher latency due to external API calls
+- Network dependency on Kubernetes API availability
+- More complex network security policies
+
+### OIDC/JWT Method (Recommended)
+
+**Advantages:**
+- ✅ **No network callbacks** - HCP Vault validates tokens locally
+- ✅ **Better performance** - Faster authentication, lower latency
+- ✅ **Simplified architecture** - No special ServiceAccounts needed
+- ✅ **Enhanced security** - Standard OIDC practices
+- ✅ **Reduced dependencies** - Works even if K8s API is temporarily unavailable
+- ✅ **Cleaner network policies** - Only outbound HTTPS required
+
+**Requirements:**
+- Kubernetes 1.21+ (for built-in OIDC discovery)
+- OIDC discovery endpoint must be accessible from HCP Vault
+- Proper JWT audience configuration
+
+### Migration Benefits
+
+Switching to OIDC/JWT authentication provides:
+
+1. **Elimination of TokenReview API calls** - No more callbacks to Kubernetes
+2. **Simplified network architecture** - Only outbound connections needed
+3. **Improved performance** - JWT validation is local to HCP Vault
+4. **Better scalability** - Reduces load on Kubernetes API server
+5. **Enhanced security posture** - Standard OIDC validation practices
 
 ## JWT Authentication Flow Details
 

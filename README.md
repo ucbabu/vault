@@ -51,6 +51,7 @@ vault/
 │   ├── azure-setup.sh
 │   ├── database-setup.sh
 │   ├── kubernetes-vault-setup.sh
+│   ├── kubernetes-vault-jwt-setup.sh     # Enhanced JWT auth for no-connectivity scenarios
 │   └── team-onboarding.sh
 ├── examples/                          # Integration examples
 │   ├── python/
@@ -140,6 +141,28 @@ vault/
   - Security benefits and architecture explanation
   - Quick start guide and usage examples
   - Best practices and troubleshooting guide
+
+### 4. Special Solutions
+- **[AKS + HCP Vault No-Connectivity Solution](docs/solutions/aks-hcp-no-connectivity-solution.md)**
+  - Complete solution for AKS integration when HCP Vault cannot reach Kubernetes
+  - Manual JWKS configuration for JWT authentication
+  - Zero network dependency implementation
+  - Production-ready scripts and automation
+
+- **[Manual JWT Configuration Guide](docs/guides/manual-jwt-configuration.md)**
+  - Step-by-step manual configuration when no connectivity exists
+  - JWKS key management and rotation procedures
+  - Comprehensive testing and validation
+
+- **[JWT Authentication Callback Comparison](docs/comparisons/jwt-callback-comparison.md)**
+  - Detailed comparison of TokenReview vs JWT/OIDC authentication
+  - Network connectivity requirements and solutions
+  - Performance impact analysis
+
+- **[AKS-HCP Connectivity Troubleshooting](docs/troubleshooting/aks-hcp-connectivity.md)**
+  - Common connectivity issues and solutions
+  - Step-by-step diagnostic procedures
+  - Error message reference and resolution guide
 
 ## 🎫 Epic Stories
 
